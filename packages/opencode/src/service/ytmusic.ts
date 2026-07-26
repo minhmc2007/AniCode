@@ -371,6 +371,10 @@ export class YtMusicPlayer {
     if (existsSync(IPC_PATH)) { try { unlinkSync(IPC_PATH) } catch {} }
   }
 
+  static stop(): void {
+    YtMusicPlayer.cleanup()
+  }
+
   static cleanup(): void {
     if (YtMusicPlayer.process) {
       try { YtMusicPlayer.process.kill("SIGTERM") } catch {}

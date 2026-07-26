@@ -28,7 +28,7 @@ import { Provider } from "@/provider/provider"
 
 import { WebSearchTool } from "./websearch"
 import { LspTool } from "./lsp"
-import { YtMusicTool } from "./ytmusic"
+import { SearchMusicTool, YtMusicTool, PlayMusicTool, ControlMusicTool } from "./ytmusic"
 import * as Truncate from "./truncate"
 import { ApplyPatchTool } from "./apply_patch"
 import { Glob } from "@opencode-ai/core/util/glob"
@@ -113,7 +113,10 @@ const layer = Layer.effect(
     const skilltool = yield* SkillTool
     const memorytool = yield* MemorySaveTool
     const agent = yield* Agent.Service
+    const searchMusic = yield* SearchMusicTool
     const ytmusic = yield* YtMusicTool
+    const playMusic = yield* PlayMusicTool
+    const controlMusic = yield* ControlMusicTool
     const codeMode = flags.experimentalCodeMode ? yield* Effect.promise(() => import("./code-mode")) : undefined
     const codeModeTool = codeMode ? yield* codeMode.CodeModeTool : undefined
 
@@ -223,7 +226,10 @@ const layer = Layer.effect(
           question: Tool.init(question),
           lsp: Tool.init(lsptool),
           plan: Tool.init(plan),
-          ytmusic: Tool.init(ytmusic),
+            ytmusic: Tool.init(ytmusic),
+            playMusic: Tool.init(playMusic),
+            controlMusic: Tool.init(controlMusic),
+          searchMusic: Tool.init(searchMusic),
           ...(codeModeTool ? { execute: Tool.init(codeModeTool) } : {}),
         })
 
@@ -246,6 +252,9 @@ const layer = Layer.effect(
             tool.patch,
             tool.memory,
             tool.ytmusic,
+            tool.searchMusic,
+            tool.playMusic,
+            tool.controlMusic,
             ...(tool.execute ? [tool.execute] : []),
             ...(flags.experimentalLspTool ? [tool.lsp] : []),
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),
