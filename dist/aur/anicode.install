@@ -1,0 +1,26 @@
+post_install() {
+  echo ":: AniCode has been installed!"
+  echo ":: Run 'anicode' to start the CLI"
+  echo ":: Configuration: ~/.config/anicode/anicode.json"
+  echo ":: Data storage:  ~/.local/share/anicode/"
+  echo ":: Memory file:   .anicode/memory.md (per project)"
+  echo ""
+  echo ":: For YouTube Music: mpv + yt-dlp required"
+  echo ":: For background image: chafa or Kitty terminal"
+}
+
+post_upgrade() {
+  post_install
+}
+
+pre_remove() {
+  echo ":: Removing AniCode..."
+  echo ":: Your configuration and data in ~/.config/anicode and ~/.local/share/anicode will be preserved."
+}
+
+post_remove() {
+  echo ":: AniCode has been removed. Config and data preserved in:"
+  echo "::   ~/.config/anicode/"
+  echo "::   ~/.local/share/anicode/"
+  echo ":: Remove manually if desired."
+}

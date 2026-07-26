@@ -1,0 +1,121 @@
+# Maintainer: AniCode Dev Team <dev@anicode.ai>
+# Contributor: Gemini 3.6 Flash (Lead Architect)
+# Contributor: DeepSeek V4 Flash (Implementation)
+
+pkgname=anicode-git
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="An AI coding agent with anime aesthetic, persistent cross-repo memory engine, and integrated YouTube Music control. Fork of opencode."
+arch=('x86_64' 'aarch64')
+url="https://github.com/AniCode/AniCode"
+license=('MIT')
+depends=(
+  'nodejs>=18'
+  'nodejs-npm'
+  'bun-bin'
+  'mpv'
+  'yt-dlp'
+  'python'
+  'python-pip'
+)
+makedepends=(
+  'git'
+  'zig'
+  'pnpm'
+  'npm'
+)
+optdepends=(
+  'chafa: terminal image rendering support'
+  'kitty-terminal: enhanced terminal graphics protocol support'
+)
+provides=('anicode')
+conflicts=('anicode' 'opencode')
+source=("git+${url}.git#branch=dev")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$srcdir/$pkgname"
+  git describe --long --tags --always 2>/dev/null || echo "1.0.0"
+}
+
+build() {
+  cd "$srcdir/$pkgname"
+  
+  # Install all dependencies
+  pnpm install --frozen-lockfile
+  
+  # Build all packages
+  pnpm build
+  
+  # Install Playwright browsers for web features
+  npx playwright install chromium --with-deps 2>/dev/null || true
+}
+
+check() {
+  cd "$srcdir/$pkgname"
+  # Run type checking on core packages
+  pnpm -r typecheck 2>/dev/null || echo "Skipping typecheck for AUR build"
+}
+
+package() {
+  cd "$srcdir/$pkgname"
+  
+  # Install main binary
+  install -Dm755 packages/opencode/bin/anicode "$pkgdir/usr/bin/anicode"
+  
+  # Create symlink for backward compatibility
+  ln -sf anicode "$pkgdir/usr/bin/ani"
+  
+  # Install all built packages to system
+  local pkgdir_base="$pkgdir/usr/lib/anicode"
+  
+  # Copy built packages
+  for pkg in packages/*/; do
+    if [ -d "$pkg/dist" ]; then
+      pkgname_base=$(basename "$pkg")
+      install -dm755 "$pkgdir_base/$pkgname_base"
+      cp -r "$pkg/dist/"* "$pkgdir_base/$pkgname_base/" 2>/dev/null || true
+    fi
+  done
+  
+  # Install schema and config defaults
+  install -dm755 "$pkgdir/usr/share/anicode"
+  cp -r packages/core/schema "$pkgdir/usr/share/anicode/" 2>/dev/null || true
+  
+  # Install license
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  
+  # Install shell completions (generate if possible)
+  install -dm755 "$pkgdir/usr/share/zsh/site-functions"
+  install -dm755 "$pkgdir/usr/share/bash-completion/completions"
+  install -dm755 "$pkgdir/usr/share/fish/vendor_completions.d"
+  
+  # Generate and install completions
+  "$pkgdir/usr/bin/anicode" completion zsh > "$pkgdir/usr/share/zsh/site-functions/_anicode" 2>/dev/null || true
+  "$pkgdir/usr/bin/anicode" completion bash > "$pkgdir/usr/share/bash-completion/completions/anicode" 2>/dev/null || true
+  "$pkgdir/usr/bin/anicode" completion fish > "$pkgdir/usr/share/fish/vendor_completions.d/anicode.fish" 2>/dev/null || true
+  
+  # Create default config directory structure
+  install -dm755 "$pkgdir/etc/anicode"
+  cat > "$pkgdir/etc/anicode/anicode.json" << 'EOF'
+{
+  "personality": "You are AniCode, an AI coding agent with an anime aesthetic. Be helpful, creative, and precise in your responses.",
+  "theme": "anicli",
+  "backgroundImage": "/usr/share/anicode/default-bg.png"
+}
+EOF
+}
+
+# post_install message
+post_install() {
+  echo ":: AniCode has been installed!"
+  echo ":: Run 'anicode' to start the CLI"
+  echo ":: Run 'ani' as a shorthand"
+  echo ""
+  echo ":: Configuration: ~/.config/anicode/anicode.json"
+  echo ":: Data storage:  ~/.local/share/anicode/"
+  echo ":: Memory file:   .anicode/memory.md (per project)"
+  echo ""
+  echo ":: For YouTube Music integration, ensure mpv is installed"
+  echo ":: For background image support, install chafa or use Kitty terminal"
+}

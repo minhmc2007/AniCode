@@ -1,0 +1,29 @@
+pkgbase = anicode-git
+pkgdesc = An AI coding agent with anime aesthetic, persistent cross-repo memory engine, and integrated YouTube Music control. Fork of opencode.
+pkgver = 1.0.0
+pkgrel = 1
+url = https://github.com/AniCode/AniCode
+install = 
+arch = x86_64
+arch = aarch64
+license = MIT
+depends = nodejs>=18
+depends = nodejs-npm
+depends = bun-bin
+depends = mpv
+depends = yt-dlp
+depends = python
+depends = python-pip
+makedepends = git
+makedepends = zig
+makedepends = pnpm
+makedepends = npm
+optdepends = chafa: terminal image rendering support
+optdepends = kitty-terminal: enhanced terminal graphics protocol support
+provides = anicode
+conflicts = anicode
+conflicts = opencode
+source = git+https://github.com/AniCode/AniCode.git#branch=dev
+sha256sums = SKIP
+
+pkgname = anicode-git
