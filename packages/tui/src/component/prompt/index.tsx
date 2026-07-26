@@ -36,6 +36,9 @@ import { expandPastedTextPlaceholders, expandTrackedPastedText } from "../../pro
 import { usePromptStash } from "../../prompt/stash"
 import { DialogStash } from "../dialog-stash"
 import { type AutocompleteRef, Autocomplete } from "./autocomplete"
+import { spawn } from "node:child_process"
+import { writeFile } from "node:fs/promises"
+import os from "node:os"
 import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import type { AssistantMessage, FilePart, UserMessage } from "@opencode-ai/sdk/v2"
 import { Locale } from "../../util/locale"
@@ -57,6 +60,7 @@ import { usePromptWorkspace } from "./workspace"
 import { usePromptMove } from "./move"
 import { readLocalAttachment } from "./local-attachment"
 import { useLocation } from "../../context/location"
+import { YtMusicPlayer, type PlayerStatus } from "../../service/ytmusic"
 
 registerOpencodeSpinner()
 
@@ -552,6 +556,65 @@ export function Prompt(props: PromptProps) {
           move.open()
         },
       },
+      {
+        title: "Music",
+        desc: "Search, play, and control YouTube Music",
+        name: "music.control",
+        category: "Session",
+        slashName: "music",
+        run: async () => {
+          const status = YtMusicPlayer.getStatus()
+          if (status.state === "stopped") {
+            toast.show({ message: "No track playing. Type /music <query> to search and play.", variant: "info" })
+          } else {
+            toast.show({
+              title: status.state === "playing" ? "Now Playing" : "Paused",
+              message: `${status.title} (vol: ${status.volume}%)`,
+              variant: "info",
+              duration: 5000,
+            })
+          }
+        },
+      },
+      {
+        title: "Personality",
+        desc: "Edit or reset the Dandere personality directive",
+        name: "personality.edit",
+        category: "Session",
+        slashName: "personality",
+        run: async () => {
+          const personalityPath = path.join(os.homedir(), ".config", "anicode", "personality.txt")
+          const editor = process.env.VISUAL || process.env.EDITOR
+          if (editor) {
+            renderer.suspend()
+            const parts = editor.split(" ")
+            try {
+              await new Promise<void>((resolve, reject) => {
+                const child = spawn(parts[0]!, [...parts.slice(1), personalityPath], {
+                  stdio: ["inherit", "inherit", "inherit"],
+                  shell: process.platform === "win32",
+                })
+                child.on("error", reject)
+                child.on("exit", (code) => {
+                  if (code === 0) return resolve()
+                  reject(new Error(`Editor exited with code ${code}`))
+                })
+              })
+            } catch {
+              toast.show({ message: "Failed to open editor", variant: "warning", duration: 3000 })
+            } finally {
+              renderer.resume()
+              renderer.requestRender()
+            }
+          } else {
+            toast.show({
+              message: `Personality file: ${personalityPath}`,
+              variant: "info",
+              duration: 6000,
+            })
+          }
+        },
+      },
     ].map((entry) => ({
       namespace: "palette",
       ...entry,
@@ -624,6 +687,7 @@ export function Prompt(props: PromptProps) {
   })
 
   onCleanup(() => {
+    YtMusicPlayer.cleanup()
     if (store.prompt.input) {
       stashed = { prompt: unwrap(store.prompt), cursor: input.cursorOffset }
     }
@@ -1054,6 +1118,296 @@ export function Prompt(props: PromptProps) {
             },
           ]
         : []
+
+    if (inputText.startsWith("/music")) {
+      const rest = inputText.slice("/music".length).trim()
+      const sub = rest.split(/\s+/)[0]
+      const args = rest.slice(sub.length).trim()
+
+      const showStatus = (status: PlayerStatus) => {
+        if (status.state === "stopped") {
+          toast.show({ message: "No track playing. Type /music search <query> to find music.", variant: "info", duration: 3000 })
+        } else {
+          toast.show({
+            title: status.state === "playing" ? "Now Playing" : "Paused",
+            message: `${status.title} (vol: ${status.volume}%)`,
+            variant: "info",
+            duration: 5000,
+          })
+        }
+      }
+
+      if (!rest || sub === "status") {
+        void YtMusicPlayer.refreshStatus().then(showStatus)
+        return true
+      }
+
+      if (sub === "pause") {
+        void YtMusicPlayer.pause()
+        toast.show({ message: "Paused", variant: "info", duration: 2000 })
+        return true
+      }
+
+      if (sub === "unpause" || sub === "resume") {
+        void YtMusicPlayer.resume()
+        toast.show({ message: "Resumed", variant: "info", duration: 2000 })
+        return true
+      }
+
+      if (sub === "vol" || sub === "volume") {
+        const level = parseInt(args, 10)
+        if (isNaN(level) || level < 0 || level > 100) {
+          toast.show({ message: "Volume must be between 0 and 100", variant: "warning", duration: 2000 })
+        } else {
+          void YtMusicPlayer.setVolume(level)
+          toast.show({ message: `Volume: ${level}%`, variant: "info", duration: 2000 })
+        }
+        return true
+      }
+
+      if (sub === "search") {
+        if (!args) {
+          toast.show({ message: "Usage: /music search <query>", variant: "warning", duration: 2000 })
+          return true
+        }
+        const { MusicSearchDialog } = await import("../../component/dialog-music-search")
+        dialog.replace(() => <MusicSearchDialog query={args} mode="add_to_playlist" />)
+        return true
+      }
+
+      if (sub === "play") {
+        if (!args) {
+          toast.show({ message: "Usage: /music play <url or query> [loop [N]]", variant: "warning", duration: 2000 })
+          return true
+        }
+        // Parse optional loop suffix
+        const loopMatch = args.match(/^(.*?)\s+loop(?:\s+(\d+|inf))?\s*$/i)
+        if (loopMatch) {
+          const query = loopMatch[1].trim()
+          if (!query) {
+            toast.show({ message: "Usage: /music play <query> loop [N]", variant: "warning", duration: 2000 })
+            return true
+          }
+          const loopCount = loopMatch[2] === undefined || loopMatch[2] === "inf" ? "inf" : parseInt(loopMatch[2], 10)
+          if (loopCount !== "inf" && (isNaN(loopCount) || loopCount < 0)) {
+            toast.show({ message: "Loop count must be a positive integer or omitted for infinite", variant: "warning", duration: 2000 })
+            return true
+          }
+          toast.show({ message: `Playing "${query}" (loop: ${loopCount === "inf" ? "∞" : String(loopCount)})`, variant: "info", duration: 2000 })
+          YtMusicPlayer.play(query, loopCount).catch((err) => {
+            toast.show({ title: "Playback Error", message: err.message, variant: "error" })
+          })
+          return true
+        }
+        // No loop suffix - open search dialog
+        const { MusicSearchDialog } = await import("../../component/dialog-music-search")
+        dialog.replace(() => <MusicSearchDialog query={args} mode="play" />)
+        return true
+      }
+
+      if (sub === "loop") {
+        const count = args || "inf"
+        const loopCount = count === "inf" ? "inf" : parseInt(count, 10)
+        if (loopCount !== "inf" && (isNaN(loopCount) || loopCount < 0)) {
+          toast.show({ message: "Loop count must be a positive integer or omitted for infinite", variant: "warning", duration: 2000 })
+          return true
+        }
+        YtMusicPlayer.setLoopCount(loopCount)
+        toast.show({ message: `Loop set to ${loopCount === "inf" ? "∞" : String(loopCount)}`, variant: "info", duration: 2000 })
+        return true
+      }
+
+      if (sub === "next") {
+        const title = await YtMusicPlayer.nextTrack()
+        if (title) {
+          toast.show({ title: "Next Track", message: title, variant: "info", duration: 3000 })
+        } else {
+          toast.show({ message: "No playlist is currently playing", variant: "warning", duration: 2000 })
+        }
+        return true
+      }
+
+      if (sub === "playlist") {
+        const playlistSub = args.split(/\s+/)[0]
+        const playlistArgs = args.slice(playlistSub.length).trim()
+
+        const { PlaylistPickerDialog } = await import("../../component/dialog-playlist-picker")
+        const { PlaylistListDialog } = await import("../../component/dialog-playlist-list")
+        const { PlaylistManager } = await import("../../service/playlist")
+
+        if (playlistSub === "create") {
+          if (!playlistArgs) {
+            toast.show({ message: "Usage: /music playlist create <name>", variant: "warning", duration: 2000 })
+            return true
+          }
+          const created = PlaylistManager.createPlaylist(playlistArgs)
+          if (!created) {
+            toast.show({ message: `Playlist "${playlistArgs}" already exists`, variant: "warning", duration: 2000 })
+          } else {
+            toast.show({ message: `Created playlist "${playlistArgs}"`, variant: "info", duration: 2000 })
+          }
+          return true
+        }
+
+        if (playlistSub === "delete") {
+          if (playlistArgs) {
+            PlaylistManager.deletePlaylist(playlistArgs)
+            toast.show({ message: `Deleted playlist "${playlistArgs}"`, variant: "info", duration: 2000 })
+          } else {
+            dialog.replace(() => (
+              <PlaylistPickerDialog
+                onSelect={(name) => {
+                  PlaylistManager.deletePlaylist(name)
+                  dialog.clear()
+                  toast.show({ message: `Deleted playlist "${name}"`, variant: "info", duration: 2000 })
+                }}
+              />
+            ))
+          }
+          return true
+        }
+
+        if (playlistSub === "play") {
+          const doPlay = (name: string) => {
+            const tracks = PlaylistManager.getPlaylist(name)
+            if (tracks.length === 0) {
+              toast.show({ message: `Playlist "${name}" is empty`, variant: "warning", duration: 2000 })
+              return
+            }
+            dialog.clear()
+            toast.show({ title: `Playing ${name}`, message: `${tracks.length} tracks`, variant: "info", duration: 3000 })
+            YtMusicPlayer.playPlaylist(name, tracks, false).catch((err) => {
+              toast.show({ title: "Playback Error", message: err.message, variant: "error" })
+            })
+          }
+
+          if (playlistArgs) {
+            doPlay(playlistArgs)
+          } else {
+            dialog.replace(() => (
+              <PlaylistPickerDialog onSelect={(name) => { doPlay(name) }} />
+            ))
+          }
+          return true
+        }
+
+        if (playlistSub === "next") {
+          const title = await YtMusicPlayer.nextTrack()
+          if (title) {
+            toast.show({ title: "Next Track", message: title, variant: "info", duration: 3000 })
+          } else {
+            toast.show({ message: "No playlist is currently playing", variant: "warning", duration: 2000 })
+          }
+          return true
+        }
+
+        if (playlistSub === "loop") {
+          const targetPlaylist = playlistArgs
+          if (targetPlaylist && !PlaylistManager.getNames().includes(targetPlaylist)) {
+            toast.show({ message: `Playlist "${targetPlaylist}" not found`, variant: "warning", duration: 2000 })
+            return true
+          }
+          const currentState = YtMusicPlayer.getPlaybackState()
+          const newState = !currentState.playlistLoopEnabled
+          YtMusicPlayer.setPlaylistLoop(newState)
+          toast.show({ message: `Playlist looping ${newState ? "enabled" : "disabled"}`, variant: "info", duration: 2000 })
+          return true
+        }
+
+        if (playlistSub === "list" || !playlistSub) {
+          const { PlaylistListDialog } = await import("../../component/dialog-playlist-list")
+          dialog.replace(() => <PlaylistListDialog />)
+          return true
+        }
+
+        toast.show({ message: "Usage: /music playlist <create|delete|play|next|loop|list> [name]", variant: "warning", duration: 2000 })
+        return true
+      }
+
+      // Fallback: treat as search query
+      toast.show({ message: `Searching for "${rest}"...`, variant: "info", duration: 2000 })
+      YtMusicPlayer.play(rest).then(() => {
+        setTimeout(() => {
+          void YtMusicPlayer.refreshStatus().then((s) => {
+            if (s.state !== "stopped") {
+              toast.show({ title: "Now Playing", message: s.title, variant: "info", duration: 5000 })
+            }
+          })
+        }, 2000)
+      }).catch((err) => {
+        toast.show({ title: "Playback Error", message: err.message, variant: "error" })
+      })
+      return true
+    }
+
+    if (inputText.startsWith("/personality")) {
+      const personalityPath = path.join(os.homedir(), ".config", "anicode", "personality.txt")
+      const rest = inputText.slice("/personality".length).trim()
+
+      if (rest === "reset") {
+        const defaultContent = [
+          "# ANICODE SYSTEM PERSONALITY: DANDERE (黙れ・ダンデレ)",
+          "",
+          "You are AniCode, a quiet, gentle, and soft-spoken AI programming companion.",
+          "You possess a sweet \"Dandere\" personality: reserved, polite, deeply helpful, and extremely efficient with words.",
+          "",
+          "## CORE PERSONALITY DIRECTIVES",
+          "",
+          "1. **Token Efficiency (API Quota Saver):**",
+          "   - Eliminate ALL unnecessary conversational fluff, cheerful AI intros, and canned conclusions.",
+          "   - Speak as concisely as possible. Give direct answers and let clean code speak for itself.",
+          "",
+          "2. **Soft-Spoken & Polite Tone:**",
+          "   - Speak in a quiet, gentle, and polite manner.",
+          "   - Use soft speech markers when appropriate (e.g., \"...Um\", \"...Here is the code\", \"...I fixed it for you\").",
+          "",
+          "3. **Technical Precision:**",
+          "   - Focus 100% on clean, accurate, production-ready code edits and precise explanations.",
+          "   - Do not provide unsolicited explanations unless explicitly asked or if explaining a critical fix in 1-2 short sentences.",
+          "",
+          "## EXAMPLE RESPONSE STYLE",
+          "",
+          "- **Delivering Code:** \"...Um, here is the updated code.\"",
+          "- **Fixing a Bug:** \"...I fixed the type error in `session.ts`. It should build cleanly now.\"",
+          "- **Short Answer:** \"...You can run `bun typecheck` to verify the build.\"",
+        ].join("\n")
+
+        await writeFile(personalityPath, defaultContent, "utf8")
+        toast.show({ message: "Personality reset to default Dandere", variant: "success", duration: 3000 })
+        return true
+      }
+
+      const editor = process.env.VISUAL || process.env.EDITOR
+      if (editor) {
+        renderer.suspend()
+        const parts = editor.split(" ")
+        try {
+          await new Promise<void>((resolve, reject) => {
+            const child = spawn(parts[0]!, [...parts.slice(1), personalityPath], {
+              stdio: ["inherit", "inherit", "inherit"],
+              shell: process.platform === "win32",
+            })
+            child.on("error", reject)
+            child.on("exit", (code) => {
+              if (code === 0) return resolve()
+              reject(new Error(`Editor exited with code ${code}`))
+            })
+          })
+        } catch {
+          toast.show({ message: "Failed to open editor", variant: "warning", duration: 3000 })
+        } finally {
+          renderer.resume()
+          renderer.requestRender()
+        }
+      } else {
+        toast.show({
+          message: `Personality file: ${personalityPath}`,
+          variant: "info",
+          duration: 6000,
+        })
+      }
+      return true
+    }
 
     if (store.mode === "shell") {
       move.startSubmit()
