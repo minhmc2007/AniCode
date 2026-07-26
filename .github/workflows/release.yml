@@ -1,0 +1,88 @@
+name: Build & Release AniCode
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: "Stable Version Tag (e.g., v1.0.0)"
+        required: true
+        type: string
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Determine Tag & Release Type
+        id: vars
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "TAG=${{ github.event.inputs.version_tag }}" >> "$GITHUB_ENV"
+            echo "IS_PRERELEASE=false" >> "$GITHUB_ENV"
+          else
+            echo "TAG=v0.0.0-beta.${{ github.run_number }}" >> "$GITHUB_ENV"
+            echo "IS_PRERELEASE=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Generate Truncated Release Notes
+        id: changelog
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          if [ -z "$LAST_TAG" ]; then
+            LOGS=$(git log --oneline | head -n 30)
+            TOTAL=$(git rev-list --count HEAD)
+          else
+            LOGS=$(git log "$LAST_TAG"..HEAD --oneline | head -n 30)
+            TOTAL=$(git rev-list --count "$LAST_TAG"..HEAD)
+          fi
+
+          {
+            echo "RELEASE_NOTES<<EOF"
+            echo "### AniCode ${{ env.TAG }}"
+            echo ""
+            echo "$LOGS"
+            if [ "$TOTAL" -gt 30 ]; then
+              echo ""
+              echo "*...and $((TOTAL - 30)) older commits (history truncated).*"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Build CLI Binary
+        run: bun run packages/opencode/script/build.ts --single
+
+      - name: Package Binary
+        run: |
+          BIN_DIR=$(ls -d dist/*/bin 2>/dev/null | head -1)
+          if [ -n "$BIN_DIR" ]; then
+            KEY=$(basename "$(dirname "$BIN_DIR")")
+            tar -czf "${KEY}.tar.gz" -C "$(dirname "$BIN_DIR")" .
+            echo "ARCHIVE=${KEY}.tar.gz" >> "$GITHUB_ENV"
+          else
+            echo "No build output found in dist/"
+            exit 1
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: AniCode ${{ env.TAG }}
+          body: ${{ env.RELEASE_NOTES }}
+          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          files: ${{ env.ARCHIVE }}
