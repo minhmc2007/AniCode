@@ -63,20 +63,26 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_ENV"
 
-      - name: Build CLI Binary
-        run: bun run packages/opencode/script/build.ts --single
+      - name: Compile Standalone Binary
+        run: |
+          cd packages/opencode
+          bun run script/build.ts --single
+          cd ../..
 
       - name: Package Binary
         run: |
-          BIN_DIR=$(ls -d dist/*/bin 2>/dev/null | head -1)
-          if [ -n "$BIN_DIR" ]; then
-            KEY=$(basename "$(dirname "$BIN_DIR")")
-            tar -czf "${KEY}.tar.gz" -C "$(dirname "$BIN_DIR")" .
-            echo "ARCHIVE=${KEY}.tar.gz" >> "$GITHUB_ENV"
-          else
-            echo "No build output found in dist/"
+          echo "Finding the compiled AniCode binary..."
+          BIN_PATH=$(find dist packages/opencode/dist -type f \( -name "anicode" -o -name "opencode" \) -executable 2>/dev/null | head -n 1)
+          if [ -z "$BIN_PATH" ]; then
+            echo "Error: Failed to find the compiled binary."
+            find dist packages/opencode/dist 2>/dev/null
             exit 1
           fi
+          echo "Found binary at: $BIN_PATH"
+          BIN_DIR=$(dirname "$BIN_PATH")
+          BIN_FILE=$(basename "$BIN_PATH")
+          tar -czvf anicode-linux-x64.tar.gz -C "$BIN_DIR" "$BIN_FILE"
+          echo "ARCHIVE=anicode-linux-x64.tar.gz" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
