@@ -1,13 +1,11 @@
-# Maintainer: AniCode Dev Team <dev@anicode.ai>
-# Contributor: Gemini 3.6 Flash (Lead Architect)
-# Contributor: DeepSeek V4 Flash (Implementation)
+# Maintainer: minhmc2077 quangminh21072010@gmail.com
 
 pkgname=anicode-git
 pkgver=1.0.0
 pkgrel=1
 pkgdesc="An AI coding agent with anime aesthetic, persistent cross-repo memory engine, and integrated YouTube Music control. Fork of opencode."
 arch=('x86_64' 'aarch64')
-url="https://github.com/AniCode/AniCode"
+url="https://github.com/minhmc2007/AniCode"
 license=('MIT')
 depends=(
   'nodejs>=18'
