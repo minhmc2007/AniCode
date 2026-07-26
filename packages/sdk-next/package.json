@@ -12,9 +12,9 @@
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
-    "@opencode-ai/client": "workspace:*",
-    "@opencode-ai/core": "workspace:*",
-    "@opencode-ai/server": "workspace:*",
+    "@anicode-ai/client": "workspace:*",
+    "@anicode-ai/core": "workspace:*",
+    "@anicode-ai/server": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

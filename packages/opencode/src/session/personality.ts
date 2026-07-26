@@ -1,7 +1,7 @@
 import nodePath from "path"
 import { Effect } from "effect"
-import { FSUtil } from "@opencode-ai/core/fs-util"
-import { Global } from "@opencode-ai/core/global"
+import { FSUtil } from "@anicode-ai/core/fs-util"
+import { Global } from "@anicode-ai/core/global"
 
 const FILE_NAME = "personality.txt"
 

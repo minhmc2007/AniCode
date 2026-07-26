@@ -1,5 +1,5 @@
-import type { LspStatus } from "@opencode-ai/sdk/v2/client"
-import type { McpServer } from "@opencode-ai/client/promise"
+import type { LspStatus } from "@anicode-ai/sdk/v2/client"
+import type { McpServer } from "@anicode-ai/client/promise"
 
 export function hasNonBlockingServiceIssue(input: {
   mcp: Array<McpServer["status"]["status"]>

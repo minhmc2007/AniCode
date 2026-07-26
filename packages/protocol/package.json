@@ -11,7 +11,7 @@
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
-    "@opencode-ai/schema": "workspace:*",
+    "@anicode-ai/schema": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

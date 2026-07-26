@@ -1,8 +1,8 @@
 import { spyOn } from "bun:test"
 import path from "path"
-import { resolve, type Info, type Resolved } from "@opencode-ai/tui/config"
+import { resolve, type Info, type Resolved } from "@anicode-ai/tui/config"
 import { TuiConfig } from "../../src/config/tui"
-import { TuiKeybind } from "@opencode-ai/tui/config/keybind"
+import { TuiKeybind } from "@anicode-ai/tui/config/keybind"
 
 type PluginSpec = string | [string, Record<string, unknown>]
 type PluginOrigin = {

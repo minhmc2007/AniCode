@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { base64Encode } from "@opencode-ai/core/util/encode"
+import { base64Encode } from "@anicode-ai/core/util/encode"
 import { mockAniCodeServer } from "../utils/mock-server"
 import { expectAppVisible } from "../utils/waits"
 

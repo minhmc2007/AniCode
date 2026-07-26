@@ -1,4 +1,4 @@
-import { Integration } from "@opencode-ai/core/integration"
+import { Integration } from "@anicode-ai/core/integration"
 import { Effect } from "effect"
 import { HttpApiBuilder, HttpApiSchema } from "effect/unstable/httpapi"
 import { Api } from "../api"

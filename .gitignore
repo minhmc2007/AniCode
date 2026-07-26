@@ -18,6 +18,8 @@ ts-dist
 **/.omo
 .omo/
 /result
+anicode
+src
 refs
 Session.vim
 /opencode.json

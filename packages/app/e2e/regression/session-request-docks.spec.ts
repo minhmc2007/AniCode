@@ -1,4 +1,4 @@
-import { base64Encode } from "@opencode-ai/core/util/encode"
+import { base64Encode } from "@anicode-ai/core/util/encode"
 import { expect, test, type Page } from "@playwright/test"
 import { mockAniCodeServer } from "../utils/mock-server"
 import { installSseTransport } from "../utils/sse-transport"

@@ -1,6 +1,6 @@
 import nodePath from "path"
 import { Effect } from "effect"
-import { FSUtil } from "@opencode-ai/core/fs-util"
+import { FSUtil } from "@anicode-ai/core/fs-util"
 
 const MEMORY_DIR = ".anicode"
 const MEMORY_FILE = "memory.md"
