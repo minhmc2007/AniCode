@@ -162,9 +162,16 @@ const layer: Layer.Layer<
       const files = yield* Effect.forEach(Array.from(paths), read, { concurrency: 8 })
       const remote = yield* Effect.forEach(urls, fetch, { concurrency: 4 })
 
+      const ctx = yield* InstanceState.context
+      const memoryFilepath = path.join(ctx.worktree, ".anicode", "memory.md")
+      const memory = (yield* fs.existsSafe(memoryFilepath))
+        ? yield* fs.readFileString(memoryFilepath).pipe(Effect.catch(() => Effect.succeed("")))
+        : ""
+
       return [
         ...Array.from(paths).flatMap((item, i) => (files[i] ? [`Instructions from: ${item}\n${files[i]}`] : [])),
         ...urls.flatMap((item, i) => (remote[i] ? [`Instructions from: ${item}\n${remote[i]}`] : [])),
+        ...(memory ? [`## Project Memory (from .anicode/memory.md)\n${memory}`] : []),
       ]
     })
 
