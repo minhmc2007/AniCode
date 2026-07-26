@@ -581,6 +581,73 @@ function map(
   }
 }
 
+const ANICLI_THEME: ThemeJson = {
+  theme: {
+    primary: RGBA.fromHex("#FD7979"),
+    secondary: RGBA.fromHex("#FFCDC9"),
+    accent: RGBA.fromHex("#FD7979"),
+    error: RGBA.fromHex("#E74C3C"),
+    warning: RGBA.fromHex("#F39C12"),
+    success: RGBA.fromHex("#2ECC71"),
+    info: RGBA.fromHex("#3498DB"),
+    text: RGBA.fromHex("#4A2B2B"),
+    textMuted: RGBA.fromHex("#7A4B4B"),
+    selectedListItemText: RGBA.fromHex("#FEEAC9"),
+    background: RGBA.fromHex("#FEEAC9"),
+    backgroundPanel: RGBA.fromHex("#FFCDC9"),
+    backgroundElement: RGBA.fromHex("#FDACAC"),
+    backgroundMenu: RGBA.fromHex("#FFCDC9"),
+    borderSubtle: RGBA.fromHex("#FFCDC9"),
+    border: RGBA.fromHex("#FDACAC"),
+    borderActive: RGBA.fromHex("#FD7979"),
+    diffAdded: RGBA.fromHex("#A8E6CF"),
+    diffRemoved: RGBA.fromHex("#FD7979"),
+    diffContext: RGBA.fromHex("#FEEAC9"),
+    diffHunkHeader: RGBA.fromHex("#FFCDC9"),
+    diffHighlightAdded: RGBA.fromHex("#B8F6DF"),
+    diffHighlightRemoved: RGBA.fromHex("#FD8989"),
+    diffAddedBg: RGBA.fromHex("#C8FFE8"),
+    diffRemovedBg: RGBA.fromHex("#FD9999"),
+    diffContextBg: RGBA.fromHex("#FEEAC9"),
+    diffLineNumber: RGBA.fromHex("#7A4B4B"),
+    diffAddedLineNumberBg: RGBA.fromHex("#C8FFE8"),
+    diffRemovedLineNumberBg: RGBA.fromHex("#FD9999"),
+    markdownText: RGBA.fromHex("#4A2B2B"),
+    markdownHeading: RGBA.fromHex("#FD7979"),
+    markdownLink: RGBA.fromHex("#E8A87C"),
+    markdownLinkText: RGBA.fromHex("#4A2B2B"),
+    markdownCode: RGBA.fromHex("#2C3E50"),
+    markdownBlockQuote: RGBA.fromHex("#7A4B4B"),
+    markdownEmph: RGBA.fromHex("#4A2B2B"),
+    markdownStrong: RGBA.fromHex("#4A2B2B"),
+    markdownHorizontalRule: RGBA.fromHex("#FDACAC"),
+    markdownListItem: RGBA.fromHex("#4A2B2B"),
+    markdownListEnumeration: RGBA.fromHex("#FD7979"),
+    markdownImage: RGBA.fromHex("#E8A87C"),
+    markdownImageText: RGBA.fromHex("#7A4B4B"),
+    markdownCodeBlock: RGBA.fromHex("#2C3E50"),
+    syntaxComment: RGBA.fromHex("#7A4B4B"),
+    syntaxKeyword: RGBA.fromHex("#FD7979"),
+    syntaxFunction: RGBA.fromHex("#E8A87C"),
+    syntaxVariable: RGBA.fromHex("#4A2B2B"),
+    syntaxString: RGBA.fromHex("#2ECC71"),
+    syntaxNumber: RGBA.fromHex("#E8A87C"),
+    syntaxType: RGBA.fromHex("#3498DB"),
+    syntaxOperator: RGBA.fromHex("#FD7979"),
+    syntaxPunctuation: RGBA.fromHex("#7A4B4B"),
+  },
+}
+
+export const RUN_THEME_NAMES = ["anicli"] as const
+export type RunThemeName = (typeof RUN_THEME_NAMES)[number]
+
+export function resolveNamedTheme(name: RunThemeName, pick: "dark" | "light"): TuiThemeCurrent {
+  switch (name) {
+    case "anicli":
+      return resolveTheme(ANICLI_THEME, pick)
+  }
+}
+
 const seed = {
   highlight: RGBA.fromIndex(6, rgba("#38bdf8")),
   muted: RGBA.fromIndex(8, rgba("#64748b")),
@@ -653,6 +720,17 @@ export const RUN_THEME_FALLBACK: RunTheme = {
   },
 }
 
+function anicliRunTheme(pick: "dark" | "light"): RunTheme {
+  const footerTheme = resolveTheme(ANICLI_THEME, pick)
+  const splash = {
+    left: footerTheme.textMuted,
+    right: footerTheme.text,
+    leftShadow: tint(footerTheme.background, RGBA.fromInts(0, 0, 0), 0.14),
+    rightShadow: tint(footerTheme.background, RGBA.fromInts(0, 0, 0), 0.14),
+  } as RunSplashTheme
+  return map(footerTheme, footerTheme, splash)
+}
+
 export async function resolveRunTheme(renderer: CliRenderer): Promise<RunTheme> {
   try {
     const colors = await renderer.getPalette({
@@ -660,7 +738,7 @@ export async function resolveRunTheme(renderer: CliRenderer): Promise<RunTheme> 
     })
     const bg = colors.defaultBackground ?? colors.palette[0]
     if (!bg) {
-      return RUN_THEME_FALLBACK
+      return anicliRunTheme(renderer.themeMode ?? "dark")
     }
 
     // Palette-only terminal reloads can leave renderer.themeMode stale, but
@@ -685,6 +763,6 @@ export async function resolveRunTheme(renderer: CliRenderer): Promise<RunTheme> 
       shared.generateSubtleSyntax(syntaxTheme),
     )
   } catch {
-    return RUN_THEME_FALLBACK
+    return anicliRunTheme("dark")
   }
 }

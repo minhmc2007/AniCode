@@ -63,6 +63,9 @@ export const Info = Schema.Struct({
   scroll_acceleration: Schema.optional(ScrollAcceleration),
   diff_style: Schema.optional(DiffStyle),
   mouse: Schema.optional(Schema.Boolean).annotate({ description: "Enable or disable mouse capture (default: true)" }),
+  background_image: Schema.optional(Schema.String).annotate({
+    description: "Path to a background image rendered behind the TUI",
+  }),
 })
 export type Info = Schema.Schema.Type<typeof Info>
 
@@ -113,6 +116,7 @@ export function resolve(input: Info, options: ResolveOptions): Resolved {
     }),
     leader_timeout: input.leader_timeout ?? LeaderTimeoutDefault,
     mouse: input.mouse ?? true,
+  background_image: input.background_image,
   }
 }
 
