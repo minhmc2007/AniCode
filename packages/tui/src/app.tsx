@@ -86,6 +86,7 @@ import * as TuiAudio from "./audio"
 import { win32DisableProcessedInput, win32FlushInputBuffer } from "./terminal-win32"
 import { destroyRenderer } from "./util/renderer"
 import { cliErrorMessage, errorFormat } from "./util/error"
+import { renderBackgroundImage } from "./component/bg-image"
 
 registerOpencodeSpinner()
 
@@ -212,6 +213,9 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
           }),
       )
       win32DisableProcessedInput()
+      if (input.config.background_image) {
+        yield* Effect.ignore(renderBackgroundImage(input.config.background_image))
+      }
       const keymap = createDefaultOpenTuiKeymap(renderer)
       yield* Effect.acquireRelease(
         Effect.sync(() => registerOpencodeKeymap(keymap, renderer, input.config)),
@@ -454,14 +458,14 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     if (!terminalTitleEnabled() || Flag.OPENCODE_DISABLE_TERMINAL_TITLE) return
 
     if (route.data.type === "home") {
-      renderer.setTerminalTitle("OpenCode")
+      renderer.setTerminalTitle("AniCode")
       return
     }
 
     if (route.data.type === "session") {
       const session = sync.session.get(route.data.sessionID)
       if (!session || isDefaultTitle(session.title)) {
-        renderer.setTerminalTitle("OpenCode")
+        renderer.setTerminalTitle("AniCode")
         return
       }
 
@@ -1070,7 +1074,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     await DialogAlert.show(
       dialog,
       "Update Complete",
-      `Successfully updated to OpenCode v${result.data.version}. Please restart the application.`,
+      `Successfully updated to AniCode v${result.data.version}. Please restart the application.`,
     )
 
     void exit()

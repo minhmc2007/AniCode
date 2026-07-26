@@ -1,4 +1,4 @@
-import { CliRenderEvents, SyntaxStyle, type TerminalColors } from "@opentui/core"
+import { CliRenderEvents, RGBA, SyntaxStyle, type TerminalColors } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
 import {
   DEFAULT_THEMES,
@@ -93,7 +93,7 @@ const [store, setStore] = createStore<State>({
   themes: allThemes(),
   mode: "dark",
   lock: undefined,
-  active: "opencode",
+  active: "anicli",
   ready: false,
 })
 
@@ -118,8 +118,8 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
         if (!lock && pick(kv.get("theme_mode")) !== undefined) kv.set("theme_mode", undefined)
         draft.mode = mode
         draft.lock = lock
-        const active = config.theme ?? kv.get("theme", "opencode")
-        draft.active = typeof active === "string" ? active : "opencode"
+        const active = config.theme ?? kv.get("theme", "anicli")
+        draft.active = typeof active === "string" ? active : "anicli"
         draft.ready = false
       }),
     )
@@ -140,7 +140,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
             }, {}),
           )
         })
-        .catch(() => setStore("active", "opencode"))
+        .catch(() => setStore("active", "anicli"))
     }
 
     onMount(() => {
@@ -159,7 +159,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
           if (!colors.palette[0]) {
             if (hasResolvedSystemTheme) return
             setSystemTheme(undefined)
-            if (store.active === "system") setStore("active", "opencode")
+            if (store.active === "system") setStore("active", "anicli")
             return
           }
           const next = store.lock ?? terminalMode(colors) ?? mode
@@ -174,7 +174,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
         .catch(() => {
           if (hasResolvedSystemTheme) return
           setSystemTheme(undefined)
-          if (store.active === "system") setStore("active", "opencode")
+          if (store.active === "system") setStore("active", "anicli")
         })
     }
 
@@ -253,17 +253,85 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       themeRefreshTimeouts.length = 0
     })
 
+    function resolveSafe(theme: ThemeJson, mode: "dark" | "light") {
+      try {
+        const resolved = resolveTheme(theme, mode)
+        if (resolved && typeof resolved === "object") return resolved
+      } catch {}
+      // Fallback: create a minimal valid Theme object from defaults
+      const bg = RGBA.fromHex("#FEEAC9")
+      const text = RGBA.fromHex("#4A2B2B")
+      return {
+        primary: RGBA.fromHex("#FD7979"),
+        secondary: RGBA.fromHex("#FFCDC9"),
+        accent: RGBA.fromHex("#FD7979"),
+        error: RGBA.fromHex("#E74C3C"),
+        warning: RGBA.fromHex("#F39C12"),
+        success: RGBA.fromHex("#2ECC71"),
+        info: RGBA.fromHex("#3498DB"),
+        text,
+        textMuted: RGBA.fromHex("#7A4B4B"),
+        selectedListItemText: text,
+        background: bg,
+        backgroundPanel: RGBA.fromHex("#FFCDC9"),
+        backgroundElement: RGBA.fromHex("#FDACAC"),
+        backgroundMenu: RGBA.fromHex("#FFCDC9"),
+        border: RGBA.fromHex("#FDACAC"),
+        borderActive: RGBA.fromHex("#FD7979"),
+        borderSubtle: RGBA.fromHex("#FFCDC9"),
+        diffAdded: RGBA.fromHex("#A8E6CF"),
+        diffRemoved: RGBA.fromHex("#FD7979"),
+        diffContext: bg,
+        diffHunkHeader: RGBA.fromHex("#FFCDC9"),
+        diffHighlightAdded: RGBA.fromHex("#B8F6DF"),
+        diffHighlightRemoved: RGBA.fromHex("#FD8989"),
+        diffAddedBg: RGBA.fromHex("#C8FFE8"),
+        diffRemovedBg: RGBA.fromHex("#FD9999"),
+        diffContextBg: bg,
+        diffLineNumber: RGBA.fromHex("#7A4B4B"),
+        diffAddedLineNumberBg: RGBA.fromHex("#C8FFE8"),
+        diffRemovedLineNumberBg: RGBA.fromHex("#FD9999"),
+        markdownText: text,
+        markdownHeading: RGBA.fromHex("#FD7979"),
+        markdownLink: RGBA.fromHex("#E8A87C"),
+        markdownLinkText: text,
+        markdownCode: RGBA.fromHex("#2C3E50"),
+        markdownBlockQuote: RGBA.fromHex("#7A4B4B"),
+        markdownEmph: text,
+        markdownStrong: text,
+        markdownHorizontalRule: RGBA.fromHex("#FDACAC"),
+        markdownListItem: text,
+        markdownListEnumeration: RGBA.fromHex("#FD7979"),
+        markdownImage: RGBA.fromHex("#E8A87C"),
+        markdownImageText: RGBA.fromHex("#7A4B4B"),
+        markdownCodeBlock: RGBA.fromHex("#2C3E50"),
+        syntaxComment: RGBA.fromHex("#7A4B4B"),
+        syntaxKeyword: RGBA.fromHex("#FD7979"),
+        syntaxFunction: RGBA.fromHex("#E8A87C"),
+        syntaxVariable: text,
+        syntaxString: RGBA.fromHex("#2ECC71"),
+        syntaxNumber: RGBA.fromHex("#E8A87C"),
+        syntaxType: RGBA.fromHex("#3498DB"),
+        syntaxOperator: RGBA.fromHex("#FD7979"),
+        syntaxPunctuation: RGBA.fromHex("#7A4B4B"),
+        thinkingOpacity: 50,
+        _hasSelectedListItemText: false,
+      }
+    }
+
     const values = createMemo(() => {
       const active = store.themes[store.active]
-      if (active) return resolveTheme(active, store.mode)
+      if (active) return resolveSafe(active, store.mode)
 
       const saved = kv.get("theme")
       if (typeof saved === "string") {
         const theme = store.themes[saved]
-        if (theme) return resolveTheme(theme, store.mode)
+        if (theme) return resolveSafe(theme, store.mode)
       }
 
-      return resolveTheme(store.themes.opencode, store.mode)
+      const fallback = store.themes.anicli
+      if (fallback) return resolveSafe(fallback, store.mode)
+      return resolveSafe(store.themes.opencode ?? null as unknown as ThemeJson, store.mode)
     })
 
     createEffect(() => renderer.setBackgroundColor(values().background))
