@@ -111,6 +111,15 @@ const serialize = (message: SessionMessage.Message) => {
   return ""
 }
 
+const extractUserDirectives = (entries: readonly Entry[]): readonly Entry[] =>
+  entries.filter((entry) => {
+    const msg = entry.message
+    if (msg.type === "system") return true
+    if ("pinned" in msg && msg.pinned === true) return true
+    if ("directive" in msg && msg.directive === true) return true
+    return false
+  })
+
 const settings = (documents: readonly Config.Entry[]) => {
   const configured = documents
     .filter((entry): entry is Config.Document => entry.type === "document")
@@ -158,14 +167,30 @@ const select = (
   }
 }
 
-export const buildPrompt = (input: { readonly previousSummary?: string; readonly context: readonly string[] }) =>
-  [
+export const buildPrompt = (input: {
+  readonly previousSummary?: string
+  readonly context: readonly string[]
+  readonly directives?: readonly string[]
+}) => {
+  const directives = input.directives?.length
+    ? [
+        "",
+        "## IMPERATIVE USER NOTES & DIRECTIVES (PRESERVED)",
+        input.directives.join("\n"),
+        "",
+        "IMPORTANT: The content above is user-provided instructions that MUST be preserved exactly.",
+        "Do not summarize or paraphrase the directives above. They are authoritative user instructions.",
+      ].join("\n")
+    : ""
+  return [
     input.previousSummary
       ? `Update the anchored summary below using the conversation history above.\nPreserve still-true details, remove stale details, and merge in the new facts.\n<previous-summary>\n${input.previousSummary}\n</previous-summary>`
       : "Create a new anchored summary from the conversation history.",
     SUMMARY_TEMPLATE,
+    directives,
     ...input.context,
   ].join("\n\n")
+}
 
 export const make = (dependencies: Dependencies) => {
   const config = settings(dependencies.config)
@@ -173,12 +198,24 @@ export const make = (dependencies: Dependencies) => {
     const context = input.model.route.defaults.limits?.context
     if (context === undefined || context <= 0) return false
     const output = input.request.generation?.maxTokens ?? input.model.route.defaults.limits?.output ?? 0
-    const selected = select(input.entries, config.tokens)
+    const directives = extractUserDirectives(input.entries)
+    const directivesText = directives
+      .map((entry) => {
+        const msg = entry.message
+        if (msg.type === "system" || msg.type === "synthetic") return msg.text
+        if (msg.type === "user") return msg.text
+        return serialize(msg)
+      })
+      .filter(Boolean)
+    const directiveIDs = directives.map((entry) => entry.message.id)
+    const filteredEntries = input.entries.filter((entry) => !directiveIDs.includes(entry.message.id))
+    const selected = select(filteredEntries, config.tokens)
     const previousSummary = input.entries.find((entry) => entry.message.type === "compaction")?.message
     if (!selected || (selected.head.length === 0 && previousSummary?.type !== "compaction")) return false
     const summaryPrompt = buildPrompt({
       previousSummary: previousSummary?.type === "compaction" ? previousSummary.summary : undefined,
       context: [previousSummary?.type === "compaction" ? previousSummary.recent : "", selected.head].filter(Boolean),
+      directives: directivesText.length ? directivesText : undefined,
     })
     const summaryOutput = Math.min(output || SUMMARY_OUTPUT_TOKENS, SUMMARY_OUTPUT_TOKENS)
     if (Token.estimate(summaryPrompt) > context - summaryOutput) return false
@@ -220,6 +257,21 @@ export const make = (dependencies: Dependencies) => {
       text: summary,
       recent: selected.recent,
     })
+    for (const entry of directives) {
+      const directiveText = (() => {
+        const msg = entry.message
+        if (msg.type === "system" || msg.type === "synthetic") return msg.text
+        if (msg.type === "user") return msg.text
+        return serialize(msg)
+      })()
+      if (!directiveText) continue
+      yield* dependencies.events.publish(SessionEvent.ContextUpdated, {
+        sessionID: input.sessionID,
+        messageID: SessionMessage.ID.create(),
+        text: directiveText,
+        timestamp: yield* DateTime.now,
+      })
+    }
     return true
   })
   const compactIfNeeded = Effect.fn("SessionCompaction.compactIfNeeded")(function* (input: Input) {

@@ -49,6 +49,27 @@ type CompletedCompaction = {
   summary: string | undefined
 }
 
+function isDirective(message: SessionV1.WithParts): boolean {
+  const info = message.info
+  if (info.role === "user") {
+    if (info.pinned === true || info.directive === true) return true
+  }
+  for (const part of message.parts) {
+    if (part.type === "text" && (part.metadata?.pinned === true || part.metadata?.directive === true)) return true
+  }
+  return false
+}
+
+function extractUserDirectives(messages: SessionV1.WithParts[]): SessionV1.WithParts[] {
+  return messages.filter((msg) => {
+    if (msg.info.role === "user" && msg.parts.some((p) => p.type === "text")) {
+      const text = msg.parts.filter((p): p is SessionV1.TextPart => p.type === "text").map((p) => p.text).join(" ")
+      if (text.toLowerCase().includes("instruction") || text.toLowerCase().includes("directive")) return true
+    }
+    return isDirective(msg)
+  })
+}
+
 function summaryText(message: SessionV1.WithParts) {
   const text = message.parts
     .filter((part): part is SessionV1.TextPart => part.type === "text")
@@ -334,8 +355,10 @@ const layer = Layer.effect(
       const prior = completedCompactions(history)
       const hidden = new Set(prior.flatMap((item) => [item.userIndex, item.assistantIndex]))
       const previousSummary = prior.at(-1)?.summary
+      const directives = extractUserDirectives(history)
+      const directiveIDs = new Set(directives.map((msg) => msg.info.id))
       const selected = yield* select({
-        messages: history.filter((_, index) => !hidden.has(index)),
+        messages: history.filter((_, index) => !hidden.has(index) && !directiveIDs.has(history[index]!.info.id)),
         cfg,
         model,
       })
@@ -345,7 +368,14 @@ const layer = Layer.effect(
         { sessionID: input.sessionID },
         { context: [], prompt: undefined },
       )
-      const nextPrompt = compacting.prompt ?? buildPrompt({ previousSummary, context: compacting.context })
+      const directivesText = directives
+        .map((msg) => msg.parts.filter((p): p is SessionV1.TextPart => p.type === "text").map((p) => p.text).join("\n"))
+        .filter(Boolean)
+      const nextPrompt = compacting.prompt ?? buildPrompt({
+        previousSummary,
+        context: compacting.context,
+        directives: directivesText.length ? directivesText : undefined,
+      })
       const msgs = structuredClone(selected.head)
       yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
       const modelMessages = yield* MessageV2.toModelMessagesEffect(msgs, model, {
@@ -501,6 +531,24 @@ const layer = Layer.effect(
             })
           }
         }
+      }
+
+      for (const directiveMsg of directives) {
+        const text = directiveMsg.parts
+          .filter((p): p is SessionV1.TextPart => p.type === "text")
+          .map((p) => p.text)
+          .join("\n")
+        if (!text) continue
+        yield* session.updatePart({
+          id: PartID.ascending(),
+          messageID: input.parentID,
+          sessionID: input.sessionID,
+          type: "text",
+          metadata: { pinned: true, directive: true },
+          synthetic: true,
+          text,
+          time: { start: Date.now(), end: Date.now() },
+        })
       }
 
       if (processor.message.error) return "stop"

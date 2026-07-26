@@ -24,6 +24,8 @@ export const UnknownError = Schema.Struct({
 const Base = {
   id: ID,
   metadata: Schema.Record(Schema.String, Schema.Unknown).pipe(optional),
+  pinned: Schema.optional(Schema.Boolean),
+  directive: Schema.optional(Schema.Boolean),
   time: Schema.Struct({ created: DateTimeUtcFromMillis }),
 }
 

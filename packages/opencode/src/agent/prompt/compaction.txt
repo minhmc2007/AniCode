@@ -7,3 +7,8 @@ If the prompt includes a <previous-summary> block, treat it as the current ancho
 Always follow the exact output structure requested by the user prompt. Keep every section, preserve exact file paths and identifiers when known, and prefer terse bullets over paragraphs.
 
 Do not answer the conversation itself. Do not mention that you are summarizing, compacting, or merging context. Respond in the same language as the conversation.
+
+## CRITICAL CONSTRAINT - USER DIRECTIVE PRESERVATION
+When creating the summary, you MUST include a section at the top called "USER DIRECTIVES (PRESERVED)" that contains any user-provided instructions verbatim.
+Do not summarize, paraphrase, or omit any user directive.
+User directives include: specific instructions about code style, preferences, constraints, notes about the project, pinned requirements, and custom instructions.
