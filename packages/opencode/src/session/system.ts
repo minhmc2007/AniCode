@@ -21,8 +21,12 @@ import { AbsolutePath } from "@opencode-ai/core/schema"
 import { Location } from "@opencode-ai/core/location"
 import { LocationServiceMap, locationServiceMapLayer } from "@opencode-ai/core/location-services"
 import { Reference } from "@opencode-ai/core/reference"
+import { Config } from "@/config/config"
+import { FSUtil } from "@opencode-ai/core/fs-util"
+import path from "path"
 import { MCP } from "@/mcp"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
+import { AniCodePersonality } from "./personality"
 
 export function provider(model: Provider.Model) {
   if (model.api.id.includes("muse-spark")) return [PROMPT_META]
@@ -55,13 +59,33 @@ const layer = Layer.effect(
     const skill = yield* Skill.Service
     const mcp = yield* MCP.Service
     const locations = yield* LocationServiceMap.Service
+    const cfg = yield* Config.Service
+    const fs = yield* FSUtil.Service
 
     return Service.of({
       environment: Effect.fn("SystemPrompt.environment")(function* (model: Provider.Model) {
         const ctx = yield* InstanceState.context
+        const config = yield* cfg.get()
         const references = yield* Effect.gen(function* () {
           return (yield* (yield* Reference.Service).list()).filter((reference) => reference.description !== undefined)
         }).pipe(Effect.provide(locations.get(Location.Ref.make({ directory: AbsolutePath.make(ctx.directory) }))))
+
+        let personality: string | undefined
+        const raw = config.personality
+        if (raw) {
+          if (typeof raw === "string") {
+            personality = raw
+          } else if ("file" in raw) {
+            const filepath = path.resolve(ctx.directory, raw.file)
+            const content = yield* fs.readFileString(filepath).pipe(Effect.catch(() => Effect.succeed("")))
+            if (content) personality = content
+          }
+        }
+
+        const dandereDirective = yield* AniCodePersonality.load().pipe(
+          Effect.catch(() => Effect.succeed("")),
+        )
+
         return [
           [
             `You are powered by the model named ${model.api.id}. The exact model ID is ${model.providerID}/${model.api.id}`,
@@ -92,6 +116,8 @@ const layer = Layer.effect(
                   ]),
                 "</available_references>",
               ].join("\n"),
+          personality,
+          dandereDirective || undefined,
         ].filter((part): part is string => part !== undefined)
       }),
 
@@ -139,7 +165,7 @@ const locationServiceMapNode = LayerNode.make({
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [Skill.node, MCP.node, locationServiceMapNode],
+  deps: [Skill.node, MCP.node, locationServiceMapNode, Config.node, FSUtil.node],
 })
 
 export * as SystemPrompt from "./system"

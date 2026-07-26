@@ -124,6 +124,10 @@ export const Info = Schema.Struct({
   instructions: Schema.optional(Schema.mutable(Schema.Array(Schema.String))).annotate({
     description: "Additional instruction files or patterns to include",
   }),
+  personality: Schema.optional(Schema.Union([Schema.String, Schema.Struct({ file: Schema.String })])).annotate({
+    description:
+      "Personality directive for the AI model. Either a string (inline directive) or an object with a file path to a personality file.",
+  }),
   layout: Schema.optional(ConfigLayoutV1.Layout).annotate({ description: "@deprecated Always uses stretch layout." }),
   permission: Schema.optional(ConfigPermissionV1.Info),
   tools: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)),
