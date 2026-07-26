@@ -1,9 +1,10 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "opencode",
+    "title": "AniCode",
     "version": "1.0.0",
-    "description": "opencode api"
+    "description": "AniCode api"
+    "description": "AniCode api"
   },
   "paths": {
     "/auth/{providerID}": {

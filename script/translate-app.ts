@@ -109,17 +109,17 @@ export function findDrift(source: Dictionary, target: Dictionary) {
 
 export function sessionIDFromEvents(output: string) {
   const match = output.match(/"sessionID"\s*:\s*"([^"]+)"/)
-  if (!match?.[1]) throw new Error("OpenCode did not report a session ID.")
+  if (!match?.[1]) throw new Error("AniCode did not report a session ID.")
   return match[1]
 }
 
 export function sessionModels(value: unknown) {
   if (!isRecord(value) || !Array.isArray(value.messages))
-    throw new Error("OpenCode returned an invalid session export.")
+    throw new Error("AniCode returned an invalid session export.")
   return value.messages.flatMap((message) => {
     if (!isRecord(message) || !isRecord(message.info) || message.info.role !== "assistant") return []
     if (typeof message.info.providerID !== "string" || typeof message.info.modelID !== "string") {
-      throw new Error("OpenCode session export omitted the assistant model.")
+      throw new Error("AniCode session export omitted the assistant model.")
     }
     return [
       {
@@ -200,8 +200,8 @@ Usage: bun run translate:app -- <locale|all> [options]
 Synchronizes product app translations with the English app, UI, and desktop dictionaries.
 
 Options:
-  -c, --concurrency <count>  Maximum parallel OpenCode runs for 'all' (default: 4)
-      --model <provider/id>  OpenCode model (default: opencode/gpt-5.5)
+  -c, --concurrency <count>  Maximum parallel AniCode runs for 'all' (default: 4)
+      --model <provider/id>  AniCode model (default: opencode/gpt-5.5)
       --variant <name>       Model variant (default: xhigh)
       --dry-run              Report drift without running OpenCode
       --check                Exit nonzero when translation drift exists
@@ -257,7 +257,7 @@ Examples:
     return
   }
 
-  if (failed.length) console.error(`\nOpenCode failed for: ${failed.map((result) => result.locale).join(", ")}`)
+  if (failed.length) console.error(`\nAniCode failed for: ${failed.map((result) => result.locale).join(", ")}`)
   if (incomplete.length)
     console.error(`Translation remains incomplete for: ${incomplete.map((plan) => plan.locale).join(", ")}`)
   if (escaped.length) console.error(`Translation changed files outside its locale targets: ${escaped.join(", ")}`)

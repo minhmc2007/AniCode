@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "@opencode-ai/tui",
+  "name": "@anicode-ai/tui",
   "version": "1.18.5",
   "private": true,
   "type": "module",
