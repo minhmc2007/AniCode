@@ -28,10 +28,13 @@ tar -xzf anicode-linux-x64.tar.gz
 sudo mv anicode /usr/local/bin/
 ```
 
-#### Method 2: Arch Linux (AUR)
+#### Method 2: Arch Linux (PKGBUILD)
+
+Build from the PKGBUILD in `dist/aur/`:
 
 ```bash
-paru -S anicode-git
+cd dist/aur/opencode-bin
+makepkg -si
 ```
 
 #### Method 3: Build from Source
