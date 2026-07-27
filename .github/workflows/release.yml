@@ -96,5 +96,4 @@ jobs:
           name: AniCode ${{ env.TAG }}
           body: ${{ env.RELEASE_NOTES }}
           prerelease: ${{ env.IS_PRERELEASE == 'true' }}
-          make_latest: "true"
           files: ${{ env.ARCHIVE }}
