@@ -25,7 +25,12 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Bun
-        uses: ./.github/actions/setup-bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Dependencies
+        run: bun install --frozen-lockfile
 
       - name: Determine Tag & Release Type
         id: vars
