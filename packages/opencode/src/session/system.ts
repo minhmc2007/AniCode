@@ -63,63 +63,64 @@ const layer = Layer.effect(
     const fs = yield* FSUtil.Service
 
     return Service.of({
-      environment: Effect.fn("SystemPrompt.environment")(function* (model: Provider.Model) {
-        const ctx = yield* InstanceState.context
-        const config = yield* cfg.get()
-        const references = yield* Effect.gen(function* () {
-          return (yield* (yield* Reference.Service).list()).filter((reference) => reference.description !== undefined)
-        }).pipe(Effect.provide(locations.get(Location.Ref.make({ directory: AbsolutePath.make(ctx.directory) }))))
+      environment: ((model: Provider.Model) =>
+        Effect.gen(function* () {
+          const ctx = yield* InstanceState.context
+          const config = yield* cfg.get()
+          const references = yield* Effect.gen(function* () {
+            return (yield* (yield* Reference.Service).list()).filter((reference) => reference.description !== undefined)
+          }).pipe(Effect.provide(locations.get(Location.Ref.make({ directory: AbsolutePath.make(ctx.directory) }))))
 
-        let personality: string | undefined
-        const raw = config.personality
-        if (raw) {
-          if (typeof raw === "string") {
-            personality = raw
-          } else if ("file" in raw) {
-            const filepath = path.resolve(ctx.directory, raw.file)
-            const content = yield* fs.readFileString(filepath).pipe(Effect.catch(() => Effect.succeed("")))
-            if (content) personality = content
+          let personality: string | undefined
+          const raw = config.personality
+          if (raw) {
+            if (typeof raw === "string") {
+              personality = raw
+            } else if ("file" in raw) {
+              const filepath = path.resolve(ctx.directory, raw.file)
+              const content = yield* fs.readFileString(filepath).pipe(Effect.catch(() => Effect.succeed("")))
+              if (content) personality = content
+            }
           }
-        }
 
-        const dandereDirective = yield* AniCodePersonality.load().pipe(
-          Effect.catch(() => Effect.succeed("")),
-        )
+          const dandereDirective = yield* AniCodePersonality.load().pipe(
+            Effect.catch(() => Effect.succeed("")),
+          )
 
-        return [
-          [
-            `You are powered by the model named ${model.api.id}. The exact model ID is ${model.providerID}/${model.api.id}`,
-            `Here is some useful information about the environment you are running in:`,
-            `<env>`,
-            `  Working directory: ${ctx.directory}`,
-            `  Workspace root folder: ${ctx.worktree}`,
-            `  Is directory a git repo: ${ctx.project.vcs === "git" ? "yes" : "no"}`,
-            `  Platform: ${process.platform}`,
-            `  Today's date: ${new Date().toDateString()}`,
-            `</env>`,
-          ].join("\n"),
-          references.length === 0
-            ? undefined
-            : [
-                "Project references provide additional directories that can be accessed when relevant.",
-                "<available_references>",
-                ...references
-                  .toSorted((a, b) => a.name.localeCompare(b.name))
-                  .flatMap((reference) => [
-                    "  <reference>",
-                    `    <name>${reference.name}</name>`,
-                    `    <path>${reference.path}</path>`,
-                    ...(reference.description === undefined
-                      ? []
-                      : [`    <description>${reference.description}</description>`]),
-                    "  </reference>",
-                  ]),
-                "</available_references>",
-              ].join("\n"),
-          personality,
-          dandereDirective || undefined,
-        ].filter((part): part is string => part !== undefined)
-      }),
+          return [
+            [
+              `You are powered by the model named ${model.api.id}. The exact model ID is ${model.providerID}/${model.api.id}`,
+              `Here is some useful information about the environment you are running in:`,
+              `<env>`,
+              `  Working directory: ${ctx.directory}`,
+              `  Workspace root folder: ${ctx.worktree}`,
+              `  Is directory a git repo: ${ctx.project.vcs === "git" ? "yes" : "no"}`,
+              `  Platform: ${process.platform}`,
+              `  Today's date: ${new Date().toDateString()}`,
+              `</env>`,
+            ].join("\n"),
+            references.length === 0
+              ? undefined
+              : [
+                  "Project references provide additional directories that can be accessed when relevant.",
+                  "<available_references>",
+                  ...references
+                    .toSorted((a, b) => a.name.localeCompare(b.name))
+                    .flatMap((reference) => [
+                      "  <reference>",
+                      `    <name>${reference.name}</name>`,
+                      `    <path>${reference.path}</path>`,
+                      ...(reference.description === undefined
+                        ? []
+                        : [`    <description>${reference.description}</description>`]),
+                      "  </reference>",
+                    ]),
+                  "</available_references>",
+                ].join("\n"),
+            personality,
+            dandereDirective || undefined,
+          ].filter((part): part is string => part !== undefined)
+        })) as unknown as (model: Provider.Model) => Effect.Effect<string[]>,
 
       skills: Effect.fn("SystemPrompt.skills")(function* (agent: Agent.Info) {
         if (Permission.disabled(["skill"], agent.permission).has("skill")) return

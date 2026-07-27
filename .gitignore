@@ -20,6 +20,7 @@ ts-dist
 /result
 anicode
 src
+!packages/plugin-opencode/src/
 refs
 Session.vim
 /opencode.json

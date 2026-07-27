@@ -36,7 +36,7 @@ export const directories = Effect.fn("ConfigPaths.directories")(function* (direc
       start: Global.Path.home,
       stop: Global.Path.home,
     })),
-    ...(Flag.OPENCODE_CONFIG_DIR ? [Flag.OPENCODE_CONFIG_DIR] : []),
+    ...(Flag.ANICODE_CONFIG_DIR ? [Flag.ANICODE_CONFIG_DIR] : []),
   ])
 })
 

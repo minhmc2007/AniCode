@@ -26,7 +26,7 @@ const init: Tool.DefWithoutID = {
         output: `Memory saved to .anicode/memory.md (category: ${category})`,
         metadata: { category },
       }
-    }).pipe(Effect.orDie) as Effect.Effect<Tool.ExecuteResult>,
+    }).pipe(Effect.orDie) as unknown as Effect.Effect<Tool.ExecuteResult>,
 }
 
 export const MemorySaveTool: Effect.Effect<Tool.Info> = Effect.succeed({
