@@ -220,6 +220,57 @@ function pathArgs(list: Part[], ps: boolean, cmd = false) {
   return out
 }
 
+class TerminalBuffer {
+  private buffer = ""
+  private timeout: ReturnType<typeof setTimeout> | null = null
+  private queue: Queue.Queue<{ _tag: "chunk"; text: string } | { _tag: "end" }>
+
+  constructor(queue: Queue.Queue<{ _tag: "chunk"; text: string } | { _tag: "end" }>) {
+    this.queue = queue
+  }
+
+  push(data: string) {
+    const clean = stripAnsi(data)
+    this.buffer += clean
+    this.flushLines()
+    process.stdout.write(clean)
+  }
+
+  private flushLines() {
+    let idx: number
+    while ((idx = this.buffer.indexOf("\n")) !== -1) {
+      const line = this.buffer.slice(0, idx)
+      this.buffer = this.buffer.slice(idx + 1)
+      const parts = line.split("\r")
+      Queue.offerUnsafe(this.queue, { _tag: "chunk", text: parts[parts.length - 1] + "\n" })
+    }
+    if (this.timeout !== null) clearTimeout(this.timeout)
+    if (this.buffer.length > 0) {
+      this.timeout = setTimeout(() => {
+        this.timeout = null
+        const parts = this.buffer.split("\r")
+        Queue.offerUnsafe(this.queue, { _tag: "chunk", text: parts[parts.length - 1] })
+        process.stdout.write("\n")
+        this.buffer = ""
+      }, 200)
+    }
+  }
+
+  end() {
+    if (this.timeout !== null) {
+      clearTimeout(this.timeout)
+      this.timeout = null
+    }
+    if (this.buffer.length > 0) {
+      const parts = this.buffer.split("\r")
+      Queue.offerUnsafe(this.queue, { _tag: "chunk", text: parts[parts.length - 1] })
+      process.stdout.write("\n")
+      this.buffer = ""
+    }
+    Queue.offerUnsafe(this.queue, { _tag: "end" })
+  }
+}
+
 function preview(text: string) {
   if (text.length <= MAX_METADATA_LENGTH) return text
   return "...\n\n" + text.slice(-MAX_METADATA_LENGTH)
@@ -459,15 +510,13 @@ export const ShellTool = Tool.define(
             },
           })
 
+          const terminalBuf = new TerminalBuffer(queue)
+
           PtyManager.active = true
           PtyManager.writeCallback = (data: string) => ptyProcess.write(data)
           PtyBridge.emit("status", true)
 
-          const onDataDisp = ptyProcess.onData((chunk) => {
-            const normalized = chunk.replace(/\r\n/g, "\n")
-            Queue.offerUnsafe(queue, { _tag: "chunk", text: normalized })
-            process.stdout.write(normalized)
-          })
+          const onDataDisp = ptyProcess.onData((chunk) => terminalBuf.push(chunk))
 
           yield* Effect.addFinalizer(() =>
             Effect.sync(() => {
@@ -485,7 +534,7 @@ export const ShellTool = Tool.define(
             PtyManager.active = false
             PtyManager.writeCallback = null
             PtyBridge.emit("status", false)
-            Queue.offerUnsafe(queue, { _tag: "end" })
+            terminalBuf.end()
           })
 
           yield* Effect.addFinalizer(() => Effect.sync(() => onExitDisp.dispose()))
