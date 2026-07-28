@@ -10,6 +10,7 @@ import { described } from "./metadata"
 
 const root = "/tui"
 export const CommandPayload = Schema.Struct({ command: Schema.String })
+export const TtyWritePayload = Schema.Struct({ data: Schema.String })
 const EventTuiPromptAppend = Schema.Struct({
   type: Schema.Literal(TuiEvent.PromptAppend.type),
   properties: TuiEvent.PromptAppend.data,
@@ -47,6 +48,7 @@ export const TuiPaths = {
   selectSession: `${root}/select-session`,
   controlNext: `${root}/control/next`,
   controlResponse: `${root}/control/response`,
+  ttyWrite: `${root}/tty-write`,
 } as const
 
 export const TuiApi = HttpApi.make("tui")
@@ -191,6 +193,17 @@ export const TuiApi = HttpApi.make("tui")
             identifier: "tui.control.response",
             summary: "Submit TUI response",
             description: "Submit a response to the TUI request queue to complete a pending request.",
+          }),
+        ),
+        HttpApiEndpoint.post("ttyWrite", TuiPaths.ttyWrite, {
+          query: WorkspaceRoutingQuery,
+          payload: TtyWritePayload,
+          success: described(Schema.Boolean, "Keystroke written to PTY"),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "tui.ttyWrite",
+            summary: "Write keystroke to active PTY",
+            description: "Forward a keystroke from the TUI to the active shell PTY on the server.",
           }),
         ),
       )

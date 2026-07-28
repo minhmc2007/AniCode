@@ -129,6 +129,7 @@ const sessionBindingCommands = [
   "session.toggle.actions",
   "session.toggle.scrollbar",
   "session.toggle.generic_tool_output",
+  "session.tty.interactive",
   "session.first",
   "session.last",
   "session.messages_last_user",
@@ -260,6 +261,19 @@ export function Session() {
   const [_animationsEnabled, _setAnimationsEnabled] = kv.signal("animations_enabled", true)
   const [showGenericToolOutput, setShowGenericToolOutput] = kv.signal("generic_tool_output_visibility", false)
 
+  const [ttyActive, setTtyActive] = createSignal(false)
+  const shellRunning = createMemo(() =>
+    messages().some((msg) =>
+      (sync.data.part[msg.id] ?? []).some(
+        (p): p is ToolPart => p.type === "tool" && p.tool === "bash" && p.state.status === "running",
+      ),
+    ),
+  )
+
+  createEffect(on(shellRunning, (running) => {
+    if (!running) setTtyActive(false)
+  }))
+
   const wide = createMemo(() => dimensions().width > 120)
   const sidebarVisible = createMemo(() => {
     if (session()?.parentID) return false
@@ -346,6 +360,31 @@ export function Session() {
   const keymap = useOpencodeKeymap()
   const dialog = useDialog()
   const renderer = useRenderer()
+
+  onMount(() => {
+    const offIntercept = keymap.intercept("key", (ctx) => {
+      if (!ttyActive()) return
+      ctx.consume({ preventDefault: true, stopPropagation: true })
+      if (ctx.event.name === "escape") {
+        setTtyActive(false)
+        return
+      }
+      const key = ctx.event
+      const char = key.name === "return" || key.name === "enter"
+        ? "\r"
+        : key.name === "backspace"
+          ? "\x7f"
+          : key.sequence
+      if (char) {
+        sdk.fetch(`${sdk.url}/tui/tty-write`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: char }),
+        }).catch(() => {})
+      }
+    }, { priority: 100 })
+    onCleanup(offIntercept)
+  })
 
   event.on("session.status", (evt) => {
     if (evt.properties.sessionID !== route.sessionID) return
@@ -1078,6 +1117,17 @@ export function Session() {
         moveChild(-1)
       }),
     },
+    {
+      title: "Toggle TTY interactive mode",
+      value: "session.tty.interactive",
+      category: "Session",
+      hidden: true,
+      enabled: shellRunning(),
+      run: () => {
+        setTtyActive(!ttyActive())
+        dialog.clear()
+      },
+    },
   ])
 
   const sessionCommands = createMemo(() =>
@@ -1280,6 +1330,19 @@ export function Session() {
                 </For>
               </scrollbox>
               <box flexShrink={0}>
+                <Show when={ttyActive()}>
+                  <box paddingLeft={2} paddingRight={2} paddingTop={1} paddingBottom={1}>
+                    <text>
+                      <span style={{ bold: true, bg: "#FD7979", fg: "#FEEAC9" }}>
+                        TTY INTERACTIVE MODE ACTIVE
+                      </span>
+                      {" "}
+                      <span style={{ bold: true, bg: "#FD7979", fg: "#FEEAC9" }}>
+                        All typing sent to terminal — Esc to exit
+                      </span>
+                    </text>
+                  </box>
+                </Show>
                 <Show when={permissions().length > 0}>
                   <PermissionPrompt
                     request={permissions()[0]}
@@ -1295,18 +1358,18 @@ export function Session() {
                 <Show when={session()?.parentID}>
                   <SubagentFooter />
                 </Show>
-                <Show when={visible()}>
+                <Show when={visible() && !ttyActive()}>
                   <pluginRuntime.Slot
                     name="session_prompt"
                     mode="replace"
                     session_id={route.sessionID}
-                    visible={visible()}
+                    visible={visible() && !ttyActive()}
                     disabled={disabled()}
                     on_submit={toBottom}
                     ref={bind}
                   >
                     <Prompt
-                      visible={visible()}
+                      visible={visible() && !ttyActive()}
                       ref={bind}
                       disabled={disabled()}
                       onSubmit={() => {

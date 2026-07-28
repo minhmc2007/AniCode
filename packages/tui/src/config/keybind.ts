@@ -148,6 +148,7 @@ export const Definitions = {
   messages_redo: keybind("<leader>r", "Redo message"),
   messages_toggle_conceal: keybind("<leader>h", "Toggle code block concealment in messages"),
   tool_details: keybind("none", "Toggle tool details visibility"),
+  session_tty_interactive: keybind("shift+tab", "Toggle interactive TTY mode for shell commands"),
   display_thinking: keybind("none", "Toggle thinking blocks visibility"),
 
   prompt_submit: keybind("none", "Submit prompt"),
@@ -353,6 +354,7 @@ export const CommandMap = {
   messages_redo: "session.redo",
   messages_toggle_conceal: "session.toggle.conceal",
   tool_details: "session.toggle.actions",
+  session_tty_interactive: "session.tty.interactive",
   display_thinking: "session.toggle.thinking",
   prompt_submit: "prompt.submit",
   prompt_editor_context_clear: "prompt.editor_context.clear",

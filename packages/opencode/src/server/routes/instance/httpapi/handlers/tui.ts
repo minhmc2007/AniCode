@@ -5,8 +5,9 @@ import { Effect } from "effect"
 import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi"
 import { nextTuiRequest, submitTuiResponse } from "@/server/shared/tui-control"
 import { InstanceHttpApi } from "../api"
-import { CommandPayload, TuiPublishPayload } from "../groups/tui"
+import { CommandPayload, TuiPublishPayload, TtyWritePayload } from "../groups/tui"
 import * as SessionError from "./session-errors"
+import { PtyManager } from "@/service/pty-bridge"
 
 const commandAliases = {
   session_new: "session.new",
@@ -113,6 +114,11 @@ export const tuiHandlers = HttpApiBuilder.group(InstanceHttpApi, "tui", (handler
       return true
     })
 
+    const ttyWrite = Effect.fn("TuiHttpApi.ttyWrite")(function* (ctx: { payload: typeof TtyWritePayload.Type }) {
+      PtyManager.write(ctx.payload.data)
+      return true
+    })
+
     return handlers
       .handle("appendPrompt", appendPrompt)
       .handle("openHelp", openHelp)
@@ -127,5 +133,6 @@ export const tuiHandlers = HttpApiBuilder.group(InstanceHttpApi, "tui", (handler
       .handle("selectSession", selectSession)
       .handle("controlNext", controlNext)
       .handle("controlResponse", controlResponse)
+      .handle("ttyWrite", ttyWrite)
   }),
 )

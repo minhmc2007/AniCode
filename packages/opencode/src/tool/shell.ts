@@ -1,6 +1,7 @@
-import { Effect, Stream } from "effect"
+import { Effect, Queue, Stream, Option } from "effect"
+import stripAnsi from "strip-ansi"
 import os from "os"
-import { createWriteStream } from "node:fs"
+
 import * as Tool from "./tool"
 import path from "path"
 import { containsPath, type InstanceContext } from "../project/instance-context"
@@ -17,10 +18,12 @@ import { ShellID } from "./shell/id"
 
 import * as Truncate from "./truncate"
 import { Plugin } from "@/plugin"
-import { ChildProcess } from "effect/unstable/process"
-import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
 import { ShellPrompt, type Parameters } from "./shell/prompt"
 import { BashArity } from "@/permission/arity"
+import { ChildProcess } from "effect/unstable/process"
+import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
+import { spawn as spawnPty } from "@anicode-ai/core/pty/pty.bun"
+import { PtyBridge, PtyManager } from "../service/pty-bridge"
 
 export { Parameters } from "./shell/prompt"
 
@@ -290,24 +293,6 @@ const ask = Effect.fn("ShellTool.ask")(function* (ctx: Tool.Context, scan: Scan,
   })
 })
 
-function cmd(shell: string, command: string, cwd: string, env: NodeJS.ProcessEnv) {
-  if (process.platform === "win32" && Shell.ps(shell)) {
-    return ChildProcess.make(shell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command], {
-      cwd,
-      env,
-      stdin: "ignore",
-      detached: false,
-    })
-  }
-
-  return ChildProcess.make(command, [], {
-    shell,
-    cwd,
-    env,
-    stdin: "ignore",
-    detached: process.platform !== "win32",
-  })
-}
 const parser = lazy(async () => {
   const { Parser } = await import("web-tree-sitter")
   const { default: treeWasm } = await import("web-tree-sitter/tree-sitter.wasm" as string, {
@@ -437,40 +422,12 @@ export const ShellTool = Tool.define(
     ) {
       const limits = yield* trunc.limits()
       const keep = limits.maxBytes * 2
-      let full = ""
       let last = ""
       const list: Chunk[] = []
-      let used = 0
       let file = ""
-      let sink: ReturnType<typeof createWriteStream> | undefined
       let cut = false
       let expired = false
       let aborted = false
-
-      const closeSink = Effect.fnUntraced(function* () {
-        const stream = sink
-        if (!stream) return
-        sink = undefined
-        if (stream.destroyed || stream.closed) return
-        yield* Effect.promise(
-          () =>
-            new Promise<void>((resolve) => {
-              let settled = false
-              const done = () => {
-                if (settled) return
-                settled = true
-                stream.off("close", done)
-                stream.off("error", done)
-                stream.off("finish", done)
-                resolve()
-              }
-              stream.once("close", done)
-              stream.once("error", done)
-              stream.once("finish", done)
-              stream.end(done)
-            }),
-        ).pipe(Effect.catch(() => Effect.void))
-      })
 
       yield* ctx.metadata({
         metadata: {
@@ -478,82 +435,89 @@ export const ShellTool = Tool.define(
         },
       })
 
+      const queue = yield* Queue.unbounded<{ _tag: "chunk"; text: string } | { _tag: "end" }>()
+
+      const abort = Effect.callback<void>((resume) => {
+        if (ctx.abort.aborted) return resume(Effect.void)
+        const handler = () => resume(Effect.void)
+        ctx.abort.addEventListener("abort", handler, { once: true })
+        return Effect.sync(() => ctx.abort.removeEventListener("abort", handler))
+      })
+
+      const timeout = Effect.sleep(`${input.timeout + 100} millis`)
+
       const code: number | null = yield* Effect.scoped(
         Effect.gen(function* () {
-          yield* Effect.addFinalizer(closeSink)
-          const handle = yield* spawner.spawn(cmd(input.shell, input.command, input.cwd, input.env))
+          const ptyProcess = spawnPty(input.shell, ["-c", input.command], {
+            name: "xterm-256color",
+            cols: 100,
+            rows: 30,
+            cwd: input.cwd,
+            env: {
+              ...(input.env as Record<string, string>),
+              TERM: "xterm-256color",
+            },
+          })
 
-          yield* Effect.forkScoped(
-            Stream.runForEach(Stream.decodeText(handle.all), (chunk) => {
-              const size = Buffer.byteLength(chunk, "utf-8")
-              list.push({ text: chunk, size })
-              used += size
-              while (used > keep && list.length > 1) {
-                const item = list.shift()
-                if (!item) break
-                used -= item.size
-                cut = true
-              }
+          PtyManager.active = true
+          PtyManager.writeCallback = (data: string) => ptyProcess.write(data)
+          PtyBridge.emit("status", true)
 
-              last = preview(last + chunk)
+          const onDataDisp = ptyProcess.onData((chunk) => {
+            const normalized = chunk.replace(/\r\n/g, "\n")
+            Queue.offerUnsafe(queue, { _tag: "chunk", text: normalized })
+            process.stdout.write(normalized)
+          })
 
-              if (file) {
-                sink?.write(chunk)
-              } else {
-                full += chunk
-                if (Buffer.byteLength(full, "utf-8") > limits.maxBytes) {
-                  return trunc.write(full).pipe(
-                    Effect.andThen((next) =>
-                      Effect.sync(() => {
-                        file = next
-                        cut = true
-                        sink = createWriteStream(next, { flags: "a" })
-                        full = ""
-                      }),
-                    ),
-                    Effect.andThen(
-                      ctx.metadata({
-                        metadata: {
-                          output: last,
-                        },
-                      }),
-                    ),
-                  )
-                }
-              }
-
-              return ctx.metadata({
-                metadata: {
-                  output: last,
-                },
-              })
+          yield* Effect.addFinalizer(() =>
+            Effect.sync(() => {
+              PtyManager.active = false
+              PtyManager.writeCallback = null
+              PtyBridge.emit("status", false)
+              onDataDisp.dispose()
+              try {
+                ptyProcess.kill()
+              } catch {}
             }),
           )
 
-          const abort = Effect.callback<void>((resume) => {
-            if (ctx.abort.aborted) return resume(Effect.void)
-            const handler = () => resume(Effect.void)
-            ctx.abort.addEventListener("abort", handler, { once: true })
-            return Effect.sync(() => ctx.abort.removeEventListener("abort", handler))
+          const onExitDisp = ptyProcess.onExit(() => {
+            PtyManager.active = false
+            PtyManager.writeCallback = null
+            PtyBridge.emit("status", false)
+            Queue.offerUnsafe(queue, { _tag: "end" })
           })
 
-          const timeout = Effect.sleep(`${input.timeout + 100} millis`)
+          yield* Effect.addFinalizer(() => Effect.sync(() => onExitDisp.dispose()))
+
+          yield* Effect.forkScoped(
+            Stream.runForEach(
+              Stream.fromQueue(queue).pipe(
+                Stream.takeWhile((item): item is { _tag: "chunk"; text: string } => item._tag !== "end"),
+                Stream.map((item) => item.text),
+              ),
+              (chunk) => {
+                const size = Buffer.byteLength(chunk, "utf-8")
+                list.push({ text: chunk, size })
+                last = preview(last + chunk)
+                return ctx.metadata({ metadata: { output: last } })
+              },
+            ),
+          )
 
           const exit = yield* Effect.raceAll([
-            handle.exitCode.pipe(Effect.map((code) => ({ kind: "exit" as const, code }))),
+            Effect.callback<number>((resume) => {
+              const disp = ptyProcess.onExit(({ exitCode }) => {
+                resume(Effect.succeed(exitCode))
+              })
+              return Effect.sync(() => disp.dispose())
+            }).pipe(Effect.map((code) => ({ kind: "exit" as const, code }))),
             abort.pipe(Effect.map(() => ({ kind: "abort" as const, code: null }))),
             timeout.pipe(Effect.map(() => ({ kind: "timeout" as const, code: null }))),
           ])
 
-          if (exit.kind === "abort") {
-            aborted = true
-            yield* handle.kill({ forceKillAfter: "3 seconds" }).pipe(Effect.orDie)
-          }
-          if (exit.kind === "timeout") {
-            expired = true
-            yield* handle.kill({ forceKillAfter: "3 seconds" }).pipe(Effect.orDie)
-          }
-
+          if (exit.kind === "abort") aborted = true
+          if (exit.kind === "timeout") expired = true
           return exit.kind === "exit" ? exit.code : null
         }),
       ).pipe(Effect.orDie)
@@ -565,7 +529,7 @@ export const ShellTool = Tool.define(
         )
       }
       if (aborted) meta.push("User aborted the command")
-      const raw = list.map((item) => item.text).join("")
+      const raw = stripAnsi(list.map((item) => item.text).join(""))
       const end = tail(raw, limits.maxLines, limits.maxBytes)
       if (end.cut) cut = true
       if (!file && end.cut) {
