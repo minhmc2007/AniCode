@@ -1,5 +1,4 @@
-import { Effect, Queue, Stream, Option } from "effect"
-import stripAnsi from "strip-ansi"
+import { Chunk, Effect, Queue, Stream, Option } from "effect"
 import os from "os"
 
 import * as Tool from "./tool"
@@ -220,55 +219,12 @@ function pathArgs(list: Part[], ps: boolean, cmd = false) {
   return out
 }
 
-class TerminalBuffer {
-  private buffer = ""
-  private timeout: ReturnType<typeof setTimeout> | null = null
-  private queue: Queue.Queue<{ _tag: "chunk"; text: string } | { _tag: "end" }>
-
-  constructor(queue: Queue.Queue<{ _tag: "chunk"; text: string } | { _tag: "end" }>) {
-    this.queue = queue
-  }
-
-  push(data: string) {
-    const clean = stripAnsi(data)
-    this.buffer += clean
-    this.flushLines()
-    process.stdout.write(clean)
-  }
-
-  private flushLines() {
-    let idx: number
-    while ((idx = this.buffer.indexOf("\n")) !== -1) {
-      const line = this.buffer.slice(0, idx)
-      this.buffer = this.buffer.slice(idx + 1)
-      const parts = line.split("\r")
-      Queue.offerUnsafe(this.queue, { _tag: "chunk", text: parts[parts.length - 1] + "\n" })
-    }
-    if (this.timeout !== null) clearTimeout(this.timeout)
-    if (this.buffer.length > 0) {
-      this.timeout = setTimeout(() => {
-        this.timeout = null
-        const parts = this.buffer.split("\r")
-        Queue.offerUnsafe(this.queue, { _tag: "chunk", text: parts[parts.length - 1] })
-        process.stdout.write("\n")
-        this.buffer = ""
-      }, 200)
-    }
-  }
-
-  end() {
-    if (this.timeout !== null) {
-      clearTimeout(this.timeout)
-      this.timeout = null
-    }
-    if (this.buffer.length > 0) {
-      const parts = this.buffer.split("\r")
-      Queue.offerUnsafe(this.queue, { _tag: "chunk", text: parts[parts.length - 1] })
-      process.stdout.write("\n")
-      this.buffer = ""
-    }
-    Queue.offerUnsafe(this.queue, { _tag: "end" })
-  }
+const cleanTerminalChunk = (data: string): string => {
+  let clean = data.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "")
+  return clean.split("\n").map((line) => {
+    const parts = line.split("\r")
+    return parts[parts.length - 1]
+  }).join("\n")
 }
 
 function preview(text: string) {
@@ -486,7 +442,7 @@ export const ShellTool = Tool.define(
         },
       })
 
-      const queue = yield* Queue.unbounded<{ _tag: "chunk"; text: string } | { _tag: "end" }>()
+      const queue = yield* Queue.unbounded<Option.Option<Chunk.Chunk<string>>>()
 
       const abort = Effect.callback<void>((resume) => {
         if (ctx.abort.aborted) return resume(Effect.void)
@@ -510,13 +466,16 @@ export const ShellTool = Tool.define(
             },
           })
 
-          const terminalBuf = new TerminalBuffer(queue)
-
           PtyManager.active = true
           PtyManager.writeCallback = (data: string) => ptyProcess.write(data)
           PtyBridge.emit("status", true)
 
-          const onDataDisp = ptyProcess.onData((chunk) => terminalBuf.push(chunk))
+          const onDataDisp = ptyProcess.onData((chunk) => {
+            const cleaned = cleanTerminalChunk(chunk)
+            if (cleaned.length > 0) {
+              Queue.offerUnsafe(queue, Option.some(Chunk.of(cleaned)))
+            }
+          })
 
           yield* Effect.addFinalizer(() =>
             Effect.sync(() => {
@@ -534,7 +493,7 @@ export const ShellTool = Tool.define(
             PtyManager.active = false
             PtyManager.writeCallback = null
             PtyBridge.emit("status", false)
-            terminalBuf.end()
+            Queue.offerUnsafe(queue, Option.none())
           })
 
           yield* Effect.addFinalizer(() => Effect.sync(() => onExitDisp.dispose()))
@@ -542,8 +501,8 @@ export const ShellTool = Tool.define(
           yield* Effect.forkScoped(
             Stream.runForEach(
               Stream.fromQueue(queue).pipe(
-                Stream.takeWhile((item): item is { _tag: "chunk"; text: string } => item._tag !== "end"),
-                Stream.map((item) => item.text),
+                Stream.takeWhile(Option.isSome),
+                Stream.map((item) => Chunk.getUnsafe(Option.getOrThrow(item), 0)),
               ),
               (chunk) => {
                 const size = Buffer.byteLength(chunk, "utf-8")
@@ -578,7 +537,7 @@ export const ShellTool = Tool.define(
         )
       }
       if (aborted) meta.push("User aborted the command")
-      const raw = stripAnsi(list.map((item) => item.text).join(""))
+      const raw = list.map((item) => item.text).join("")
       const end = tail(raw, limits.maxLines, limits.maxBytes)
       if (end.cut) cut = true
       if (!file && end.cut) {
