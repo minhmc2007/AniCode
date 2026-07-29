@@ -1,4 +1,4 @@
-import { Chunk, Effect, Queue, Stream, Option } from "effect"
+import { Effect, Queue, Stream, Option } from "effect"
 import os from "os"
 
 import * as Tool from "./tool"
@@ -23,6 +23,7 @@ import { ChildProcess } from "effect/unstable/process"
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
 import { spawn as spawnPty } from "@anicode-ai/core/pty/pty.bun"
 import { PtyBridge, PtyManager } from "../service/pty-bridge"
+import { Terminal } from "@xterm/headless"
 
 export { Parameters } from "./shell/prompt"
 
@@ -78,10 +79,6 @@ type Scan = {
   always: Set<string>
 }
 
-type Chunk = {
-  text: string
-  size: number
-}
 
 const resolveWasm = (asset: string) => {
   if (asset.startsWith("file://")) return fileURLToPath(asset)
@@ -219,12 +216,14 @@ function pathArgs(list: Part[], ps: boolean, cmd = false) {
   return out
 }
 
-const cleanTerminalChunk = (data: string): string => {
-  let clean = data.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "")
-  return clean.split("\n").map((line) => {
-    const parts = line.split("\r")
-    return parts[parts.length - 1]
-  }).join("\n")
+function snapshot(term: Terminal) {
+  const buf = term.buffer.active
+  const lines: string[] = []
+  for (let i = 0; i < buf.length; i++) {
+    lines.push(buf.getLine(i)?.translateToString(true) ?? "")
+  }
+  while (lines.length && lines[lines.length - 1] === "") lines.pop()
+  return lines.join("\n")
 }
 
 function preview(text: string) {
@@ -428,9 +427,8 @@ export const ShellTool = Tool.define(
       ctx: Tool.Context,
     ) {
       const limits = yield* trunc.limits()
-      const keep = limits.maxBytes * 2
-      let last = ""
-      const list: Chunk[] = []
+      let raw = ""
+      let lastFlush = 0
       let file = ""
       let cut = false
       let expired = false
@@ -442,7 +440,7 @@ export const ShellTool = Tool.define(
         },
       })
 
-      const queue = yield* Queue.unbounded<Option.Option<Chunk.Chunk<string>>>()
+      const queue = yield* Queue.unbounded<Option.Option<string>>()
 
       const abort = Effect.callback<void>((resume) => {
         if (ctx.abort.aborted) return resume(Effect.void)
@@ -455,6 +453,14 @@ export const ShellTool = Tool.define(
 
       const code: number | null = yield* Effect.scoped(
         Effect.gen(function* () {
+          const term = new Terminal({
+            cols: 100,
+            rows: 30,
+            scrollback: Math.max(limits.maxLines * 4, 5000),
+            allowProposedApi: true,
+          })
+          yield* Effect.addFinalizer(() => Effect.sync(() => term.dispose()))
+
           const ptyProcess = spawnPty(input.shell, ["-c", input.command], {
             name: "xterm-256color",
             cols: 100,
@@ -467,20 +473,17 @@ export const ShellTool = Tool.define(
           })
 
           PtyManager.active = true
-          PtyManager.writeCallback = (data: string) => ptyProcess.write(data)
+          PtyManager.writeToPty = (data: string) => ptyProcess.write(data)
           PtyBridge.emit("status", true)
 
           const onDataDisp = ptyProcess.onData((chunk) => {
-            const cleaned = cleanTerminalChunk(chunk)
-            if (cleaned.length > 0) {
-              Queue.offerUnsafe(queue, Option.some(Chunk.of(cleaned)))
-            }
+            Queue.offerUnsafe(queue, Option.some(chunk))
           })
 
           yield* Effect.addFinalizer(() =>
             Effect.sync(() => {
               PtyManager.active = false
-              PtyManager.writeCallback = null
+              PtyManager.writeToPty = null
               PtyBridge.emit("status", false)
               onDataDisp.dispose()
               try {
@@ -491,25 +494,33 @@ export const ShellTool = Tool.define(
 
           const onExitDisp = ptyProcess.onExit(() => {
             PtyManager.active = false
-            PtyManager.writeCallback = null
+            PtyManager.writeToPty = null
             PtyBridge.emit("status", false)
             Queue.offerUnsafe(queue, Option.none())
           })
 
           yield* Effect.addFinalizer(() => Effect.sync(() => onExitDisp.dispose()))
 
+          const writeToTerm = (data: string) =>
+            Effect.callback<void>((resume) => {
+              term.write(data, () => resume(Effect.void))
+              return Effect.void
+            })
+
           yield* Effect.forkScoped(
             Stream.runForEach(
               Stream.fromQueue(queue).pipe(
                 Stream.takeWhile(Option.isSome),
-                Stream.map((item) => Chunk.getUnsafe(Option.getOrThrow(item), 0)),
+                Stream.map(Option.getOrThrow),
               ),
-              (chunk) => {
-                const size = Buffer.byteLength(chunk, "utf-8")
-                list.push({ text: chunk, size })
-                last = preview(last + chunk)
-                return ctx.metadata({ metadata: { output: last } })
-              },
+              (chunk) =>
+                Effect.gen(function* () {
+                  yield* writeToTerm(chunk)
+                  const now = Date.now()
+                  if (now - lastFlush < 100) return
+                  lastFlush = now
+                  yield* ctx.metadata({ metadata: { output: preview(snapshot(term)) } })
+                }),
             ),
           )
 
@@ -526,6 +537,7 @@ export const ShellTool = Tool.define(
 
           if (exit.kind === "abort") aborted = true
           if (exit.kind === "timeout") expired = true
+          raw = snapshot(term)
           return exit.kind === "exit" ? exit.code : null
         }),
       ).pipe(Effect.orDie)
@@ -537,7 +549,6 @@ export const ShellTool = Tool.define(
         )
       }
       if (aborted) meta.push("User aborted the command")
-      const raw = list.map((item) => item.text).join("")
       const end = tail(raw, limits.maxLines, limits.maxBytes)
       if (end.cut) cut = true
       if (!file && end.cut) {
@@ -557,7 +568,7 @@ export const ShellTool = Tool.define(
       return {
         title: input.command,
         metadata: {
-          output: last || preview(output),
+          output: preview(output),
           exit: code,
           truncated: cut,
           ...(cut && file ? { outputPath: file } : {}),

@@ -4,11 +4,10 @@ export const PtyBridge = new EventEmitter()
 
 export const PtyManager = {
   active: false,
-  writeCallback: null as ((data: string) => void) | null,
+  writeToPty: null as ((data: string) => void) | null,
   write: (data: string) => {
-    PtyBridge.emit("input", data)
-    if (PtyManager.active && PtyManager.writeCallback) {
-      PtyManager.writeCallback(data)
+    if (PtyManager.active && PtyManager.writeToPty) {
+      PtyManager.writeToPty(data)
     }
   },
 }
