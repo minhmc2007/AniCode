@@ -22,7 +22,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # Required for changelog generation
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -43,27 +43,47 @@ jobs:
             echo "IS_PRERELEASE=true" >> "$GITHUB_ENV"
           fi
 
-      - name: Generate Truncated Release Notes
+      - name: Generate Truncated Cumulative Changelog
         id: changelog
         run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Stable release detected. Searching for the last stable version tag (vX.Y.Z)..."
+            # Filter tags matching vX.Y.Z exactly, ignoring any containing prerelease suffixes like -beta
+            PREV_TAG=$(git tag -l | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || echo "")
+          else
+            echo "Beta release detected. Searching for the absolute latest tag..."
+            PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          fi
 
-          if [ -z "$LAST_TAG" ]; then
+          echo "Previous reference tag selected: '$PREV_TAG'"
+
+          if [ -z "$PREV_TAG" ]; then
+            # Fallback if no previous reference tag exists (first release of the repo)
             LOGS=$(git log --oneline | head -n 30)
             TOTAL=$(git rev-list --count HEAD)
           else
-            LOGS=$(git log "$LAST_TAG"..HEAD --oneline | head -n 30)
-            TOTAL=$(git rev-list --count "$LAST_TAG"..HEAD)
+            LOGS=$(git log "${PREV_TAG}..HEAD" --oneline | head -n 30)
+            TOTAL=$(git rev-list --count "${PREV_TAG}..HEAD")
           fi
 
           {
             echo "RELEASE_NOTES<<EOF"
-            echo "### AniCode ${{ env.TAG }}"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "### 🌸 AniCode Stable Release ${{ env.TAG }}"
+              if [ -n "$PREV_TAG" ]; then
+                echo "Changes since stable release **$PREV_TAG** (including all intermediate beta updates):"
+              fi
+            else
+              echo "### 🧪 AniCode Beta Release ${{ env.TAG }}"
+              if [ -n "$PREV_TAG" ]; then
+                echo "Changes since **$PREV_TAG**:"
+              fi
+            fi
             echo ""
             echo "$LOGS"
             if [ "$TOTAL" -gt 30 ]; then
               echo ""
-              echo "*...and $((TOTAL - 30)) older commits (history truncated).*"
+              echo "*...and $((TOTAL - 30)) older commits (history truncated to prevent clutter).* "
             fi
             echo "EOF"
           } >> "$GITHUB_ENV"
