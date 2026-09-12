@@ -33,22 +33,13 @@ sudo mv anicode /usr/local/bin/
 Build from the PKGBUILD in `dist/aur/`:
 
 ```bash
-cd dist/aur/opencode-bin
+cd dist/aur/
 makepkg -si
-```
-
-#### Method 3: Build from Source
-
-```bash
-git clone https://github.com/minhmc2007/AniCode.git
-cd AniCode
-pnpm install
-pnpm build
 ```
 
 ### Feature Highlights
 
-- **AniCli Theme:** Warm cream (`#FEEAC9`), peach (`#FFCDC9`), coral (`#FD7979`) palette.
+- **AniCli Flutter Theme:** Warm cream (`#FEEAC9`), peach (`#FFCDC9`), coral (`#FD7979`) palette.
 - **Terminal Background Image Support:** Fastfetch-style image rendering in the TUI.
 - **YouTube Music Engine:** Built-in MPV streaming, TUI `/music` menu, playlist engine, and AI natural language search (`anicode_search_music`).
 - **Persistent Cross-Repo Memory:** Stored at `.anicode/memory.md` — survives session restarts.
