@@ -615,6 +615,14 @@ export function Prompt(props: PromptProps) {
           }
         },
       },
+      {
+        title: "Send btw message",
+        desc: "Send a contextual note without interrupting the agent",
+        name: "prompt.btw",
+        category: "Prompt",
+        slashName: "btw",
+        run: () => {},
+      },
     ].map((entry) => ({
       namespace: "palette",
       ...entry,
@@ -1421,6 +1429,40 @@ export function Prompt(props: PromptProps) {
         command: inputText,
       })
       setStore("mode", "normal")
+    } else if (inputText.startsWith("/btw")) {
+      const message = inputText.slice("/btw".length).trim()
+      if (!message) {
+        toast.show({ message: "Usage: /btw <message>", variant: "warning" })
+        return true
+      }
+      move.startSubmit()
+      sdk.client.session
+        .prompt(
+          {
+            sessionID,
+            agent: agent.name,
+            model: selectedModel,
+            variant,
+            parts: [{ type: "text", text: `[BTW] ${message}` }],
+          },
+          { throwOnError: true },
+        )
+        .catch((error) => {
+          toast.show({
+            title: "Failed to send btw",
+            message: errorMessage(error),
+            variant: "error",
+          })
+        })
+      toast.show({ message: "btw sent", variant: "info" })
+      history.append({ ...store.prompt, mode: currentMode })
+      input.extmarks.clear()
+      setStore("prompt", { input: "", parts: [] })
+      setStore("extmarkToPartIndex", new Map())
+      props.onSubmit?.()
+      input.clear()
+      if (finishMoveProgress) move.finishSubmit()
+      return true
     } else if (
       inputText.startsWith("/") &&
       sync.data.command.some((x) => x.name === inputText.split("\n")[0].split(" ")[0].slice(1))

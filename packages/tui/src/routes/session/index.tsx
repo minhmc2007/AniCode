@@ -1430,6 +1430,8 @@ function UserMessage(props: {
       .filter(Boolean)
     return texts.join("\n\n")
   })
+  const isBtw = createMemo(() => text().startsWith("[BTW] "))
+  const displayText = createMemo(() => (isBtw() ? text().slice(6) : text()))
   const files = createMemo(() => props.parts.flatMap((x) => (x.type === "file" ? [x] : [])))
   const { theme } = useTheme()
   const [hover, setHover] = createSignal(false)
@@ -1465,7 +1467,7 @@ function UserMessage(props: {
             backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
             flexShrink={0}
           >
-            <text fg={theme.text}>{text()}</text>
+            <text fg={theme.text}>{displayText()}</text>
             <Show when={files().length}>
               <box flexDirection="row" paddingBottom={metadataVisible() ? 1 : 0} paddingTop={1} gap={1} flexWrap="wrap">
                 <For each={files()}>
@@ -1484,7 +1486,7 @@ function UserMessage(props: {
               </box>
             </Show>
             <Show
-              when={queued()}
+              when={queued() || isBtw()}
               fallback={
                 <Show when={ctx.showTimestamps()}>
                   <text fg={theme.textMuted}>
@@ -1496,7 +1498,12 @@ function UserMessage(props: {
               }
             >
               <text fg={theme.textMuted}>
-                <span style={{ bg: color(), fg: queuedFg(), bold: true }}> QUEUED </span>
+                {isBtw() && (
+                  <span style={{ bg: theme.secondary, fg: theme.background, bold: true }}> BTW </span>
+                )}
+                {queued() && (
+                  <span style={{ bg: color(), fg: queuedFg(), bold: true }}> QUEUED </span>
+                )}
               </text>
             </Show>
           </box>
