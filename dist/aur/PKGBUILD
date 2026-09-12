@@ -24,7 +24,7 @@ optdepends=(
 )
 provides=('anicode')
 conflicts=('anicode' 'opencode')
-source=("git+${url}.git#branch=dev")
+source=("git+${url}.git#branch=dev?depth=1")
 sha256sums=('SKIP')
 
 pkgver() {
