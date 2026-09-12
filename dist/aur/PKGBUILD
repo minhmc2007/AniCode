@@ -9,8 +9,6 @@ url="https://github.com/minhmc2007/AniCode"
 license=('MIT')
 depends=(
   'nodejs>=18'
-  'nodejs-npm'
-  'bun-bin'
   'mpv'
   'yt-dlp'
   'python'
@@ -18,9 +16,7 @@ depends=(
 )
 makedepends=(
   'git'
-  'zig'
-  'pnpm'
-  'npm'
+  'bun'
 )
 optdepends=(
   'chafa: terminal image rendering support'
@@ -40,58 +36,33 @@ build() {
   cd "$srcdir/$pkgname"
   
   # Install all dependencies
-  pnpm install --frozen-lockfile
+  bun install --frozen-lockfile
   
   # Build all packages
-  pnpm build
+  bun run build
   
-  # Install Playwright browsers for web features
-  npx playwright install chromium --with-deps 2>/dev/null || true
+  # Build single binary
+  cd packages/opencode
+  bun run build -- --single
+  cd ../..
 }
 
 check() {
   cd "$srcdir/$pkgname"
-  # Run type checking on core packages
-  pnpm -r typecheck 2>/dev/null || echo "Skipping typecheck for AUR build"
+  bun typecheck 2>/dev/null || echo "Skipping typecheck for AUR build"
 }
 
 package() {
   cd "$srcdir/$pkgname"
   
   # Install main binary
-  install -Dm755 packages/opencode/bin/anicode "$pkgdir/usr/bin/anicode"
+  install -Dm755 packages/opencode/dist/anicode-linux-x64/bin/anicode "$pkgdir/usr/bin/anicode"
   
   # Create symlink for backward compatibility
   ln -sf anicode "$pkgdir/usr/bin/ani"
   
-  # Install all built packages to system
-  local pkgdir_base="$pkgdir/usr/lib/anicode"
-  
-  # Copy built packages
-  for pkg in packages/*/; do
-    if [ -d "$pkg/dist" ]; then
-      pkgname_base=$(basename "$pkg")
-      install -dm755 "$pkgdir_base/$pkgname_base"
-      cp -r "$pkg/dist/"* "$pkgdir_base/$pkgname_base/" 2>/dev/null || true
-    fi
-  done
-  
-  # Install schema and config defaults
-  install -dm755 "$pkgdir/usr/share/anicode"
-  cp -r packages/core/schema "$pkgdir/usr/share/anicode/" 2>/dev/null || true
-  
   # Install license
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
-  
-  # Install shell completions (generate if possible)
-  install -dm755 "$pkgdir/usr/share/zsh/site-functions"
-  install -dm755 "$pkgdir/usr/share/bash-completion/completions"
-  install -dm755 "$pkgdir/usr/share/fish/vendor_completions.d"
-  
-  # Generate and install completions
-  "$pkgdir/usr/bin/anicode" completion zsh > "$pkgdir/usr/share/zsh/site-functions/_anicode" 2>/dev/null || true
-  "$pkgdir/usr/bin/anicode" completion bash > "$pkgdir/usr/share/bash-completion/completions/anicode" 2>/dev/null || true
-  "$pkgdir/usr/bin/anicode" completion fish > "$pkgdir/usr/share/fish/vendor_completions.d/anicode.fish" 2>/dev/null || true
   
   # Create default config directory structure
   install -dm755 "$pkgdir/etc/anicode"
