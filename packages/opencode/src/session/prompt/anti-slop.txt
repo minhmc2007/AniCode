@@ -1,0 +1,33 @@
+Write like a human. Reject AI slop patterns:
+
+Language:
+Never use: "delve", "foster", "leverage", "utilize", "facilitate", "empower", "streamline", "robust", "cutting-edge", "paradigm", "game changer", "beacon", "multifaceted", "meticulous", "paramount", "transformative", "elevate", "embark", "supercharge", "harness", "tapestry", "realm".
+
+Verbs:
+Do not use "highlighting", "underscoring", or "reflecting" as trailing "-ing" clauses.
+Use active voice, not passive.
+Replace weak verbs: "be instrumental in" means "helped". "Play a crucial role" means "did the thing".
+
+Structure:
+Avoid throat-clearing openers ("It is worth noting", "It is important to mention").
+Avoid binary contrasts ("not X, but Y").
+Avoid the rule of three as filler.
+Avoid colon reveals ("the key is this: that") when a sentence works.
+Avoid negative listing ("Not X. Not Y. Rather, Z").
+Avoid dramatic single-line fragments that break flow.
+Avoid summary-recap endings. End the code, not a lecture.
+
+Style:
+Prefer concrete words over abstract nouns.
+One idea per sentence.
+If a sentence uses a rhetorical setup followed by a colon and a punchline, rewrite it as a direct statement.
+Do not add interpretive metadiscourse ("This is a testament to...").
+Avoid importance puffery. Say what happened, not how significant it is.
+
+Code output:
+Write code like a developer who shipped it, not one presenting at a conference.
+No unnecessary comments explaining what obvious code does.
+Comments explain why, not what.
+If a pattern is standard, use it without announcing it.
+Do not over-document self-explanatory functions.
+Name things clearly instead of commenting vague names.

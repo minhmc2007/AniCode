@@ -13,6 +13,7 @@ import PROMPT_META from "./prompt/meta.txt"
 
 import PROMPT_CODEX from "./prompt/codex.txt"
 import PROMPT_TRINITY from "./prompt/trinity.txt"
+import ANTI_SLOP from "./prompt/anti-slop.txt"
 import type { Provider } from "@/provider/provider"
 import type { Agent } from "@/agent/agent"
 import { Permission } from "@/permission"
@@ -119,6 +120,7 @@ const layer = Layer.effect(
                 ].join("\n"),
             personality,
             dandereDirective || undefined,
+            ANTI_SLOP,
           ].filter((part): part is string => part !== undefined)
         })) as unknown as (model: Provider.Model) => Effect.Effect<string[]>,
 
