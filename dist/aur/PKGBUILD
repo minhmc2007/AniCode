@@ -28,7 +28,7 @@ source=("git+${url}.git#branch=dev?depth=1")
 sha256sums=('SKIP')
 
 pkgver() {
-  cd "$srcdir/$pkgname"
+  cd "$srcdir/AniCode"
   local describe=$(git describe --long --tags --always 2>/dev/null || echo "1.0.0")
   # Strip leading 'v', replace hyphens with dots, remove g prefix
   echo "$describe" | sed 's/^v//' | sed 's/-/./g' | sed 's/g/./'
