@@ -29,11 +29,13 @@ sha256sums=('SKIP')
 
 pkgver() {
   cd "$srcdir/$pkgname"
-  git describe --long --tags --always 2>/dev/null || echo "1.0.0"
+  local describe=$(git describe --long --tags --always 2>/dev/null || echo "1.0.0")
+  # Strip leading 'v', replace hyphens with dots, remove g prefix
+  echo "$describe" | sed 's/^v//' | sed 's/-/./g' | sed 's/g/./'
 }
 
 build() {
-  cd "$srcdir/$pkgname"
+  cd "$srcdir/AniCode"
   
   # Install all dependencies
   bun install --frozen-lockfile
@@ -48,17 +50,16 @@ build() {
 }
 
 check() {
-  cd "$srcdir/$pkgname"
+  cd "$srcdir/AniCode"
   bun typecheck 2>/dev/null || echo "Skipping typecheck for AUR build"
 }
 
 package() {
-  cd "$srcdir/$pkgname"
+  cd "$srcdir/AniCode"
   
   # Install main binary
   install -Dm755 packages/opencode/dist/anicode-linux-x64/bin/anicode "$pkgdir/usr/bin/anicode"
   
-  # Create symlink for backward compatibility
   ln -sf anicode "$pkgdir/usr/bin/ani"
   
   # Install license
@@ -87,4 +88,5 @@ post_install() {
   echo ""
   echo ":: For YouTube Music integration, ensure mpv is installed"
   echo ":: For background image support, install chafa or use Kitty terminal"
+  echo ":: Thanks you for using my project"
 }
