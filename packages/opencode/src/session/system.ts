@@ -18,6 +18,7 @@ import type { Provider } from "@/provider/provider"
 import type { Agent } from "@/agent/agent"
 import { Permission } from "@/permission"
 import { Skill } from "@/skill"
+import { Memory } from "@/memory"
 import { AbsolutePath } from "@anicode-ai/core/schema"
 import { Location } from "@anicode-ai/core/location"
 import { LocationServiceMap, locationServiceMapLayer } from "@anicode-ai/core/location-services"
@@ -50,6 +51,7 @@ export interface Interface {
   readonly environment: (model: Provider.Model) => Effect.Effect<string[]>
   readonly skills: (agent: Agent.Info) => Effect.Effect<string | undefined>
   readonly mcp: (agent: Agent.Info, permission?: PermissionV1.Ruleset) => Effect.Effect<string | undefined>
+  readonly memory: (userMessage?: string) => Effect.Effect<string | undefined>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/SystemPrompt") {}
@@ -62,6 +64,7 @@ const layer = Layer.effect(
     const locations = yield* LocationServiceMap.Service
     const cfg = yield* Config.Service
     const fs = yield* FSUtil.Service
+    const memory = yield* Memory.Service
 
     return Service.of({
       environment: ((model: Provider.Model) =>
@@ -155,6 +158,36 @@ const layer = Layer.effect(
           "</mcp_instructions>",
         ].join("\n")
       }),
+
+      memory: Effect.fn("SystemPrompt.memory")(function* (userMessage?: string) {
+        const entries = yield* memory.list()
+        if (entries.length === 0) return
+
+        const priority3 = entries.filter((e) => e.priority === 3)
+        const priority2 = entries.filter((e) => e.priority === 2)
+
+        let matchedPriority2 = priority2
+        if (userMessage) {
+          matchedPriority2 = yield* memory.matchKeywords(userMessage)
+        }
+
+        const all = [...priority3, ...matchedPriority2]
+        if (all.length === 0) return
+
+        return [
+          "<global_memory>",
+          "Persistent memory from previous sessions. Use memory tool to manage.",
+          "Priority: 1=on-demand, 2=topic-matched, 3=always loaded.",
+          "Keep memory concise. Don't duplicate information already in instructions.",
+          ...all.map((e) => [
+            `  <memory name="${e.name}" priority="${e.priority}">`,
+            `    Tags: ${e.tags.join(", ")}`,
+            ...e.content.split("\n").map((line) => `    ${line}`),
+            "  </memory>",
+          ].join("\n")),
+          "</global_memory>",
+        ].join("\n")
+      }),
     })
   }),
 )
@@ -168,7 +201,7 @@ const locationServiceMapNode = LayerNode.make({
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [Skill.node, MCP.node, locationServiceMapNode, Config.node, FSUtil.node],
+  deps: [Skill.node, Memory.node, MCP.node, locationServiceMapNode, Config.node, FSUtil.node],
 })
 
 export * as SystemPrompt from "./system"

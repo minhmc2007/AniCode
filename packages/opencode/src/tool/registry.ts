@@ -16,7 +16,7 @@ import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
-import { MemorySaveTool } from "./memory"
+import { MemoryTool } from "./memory"
 import * as Tool from "./tool"
 import { Config } from "@/config/config"
 import { type ToolContext as PluginToolContext, type ToolDefinition } from "@anicode-ai/plugin"
@@ -48,6 +48,7 @@ import { FSUtil } from "@anicode-ai/core/fs-util"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Agent } from "../agent/agent"
 import { Skill } from "../skill"
+import { Memory } from "@/memory"
 import { Permission } from "@/permission"
 import { BackgroundJob } from "@/background/job"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -111,7 +112,7 @@ const layer = Layer.effect(
     const greptool = yield* GrepTool
     const patchtool = yield* ApplyPatchTool
     const skilltool = yield* SkillTool
-    const memorytool = yield* MemorySaveTool
+    const memorytool = yield* MemoryTool
     const agent = yield* Agent.Service
     const searchMusic = yield* SearchMusicTool
     const ytmusic = yield* YtMusicTool
@@ -446,6 +447,7 @@ export const node = LayerNode.make({
     Todo.node,
     Agent.node,
     Skill.node,
+    Memory.node,
     Session.node,
     BackgroundJob.node,
     Provider.node,
